@@ -1,0 +1,354 @@
+/* src/styles/FinanceDashboard.css */
+
+/* ──────────────────────────────────────────────────────────────
+   Theme (frias/azul)
+   ────────────────────────────────────────────────────────────── */
+:root{
+  /* marca */
+  --brand-400:#90D5FF;
+  --brand-500:#5BA7F7;
+  --brand-600:#2D8BEF;
+  --brand-700:#1E6ECB;
+
+  /* texto/fundo/linha */
+  --ink:#1E293B;         /* texto escuro suave (não preto) */
+  --ink-soft:#334155;    /* títulos */
+  --muted:#64748B;       /* secundário */
+  --line:#E2E8F0;        /* linhas/bordas */
+  --bg:#F7F9FC;          /* fundo claro */
+  --white:#fff;
+
+  /* estados */
+  --success:#10b981;
+  --warning:#f59e0b;
+  --danger:#ef4444;
+
+  /* raios/sombras/anim */
+  --radius-lg:16px;
+  --radius-xl:20px;
+
+  --shadow-1:0 10px 24px rgba(15,23,42,.08);
+  --shadow-2:0 18px 42px rgba(2,8,23,.12);
+
+  --ring: rgba(144,213,255,.45);
+
+  --fast:.18s cubic-bezier(.2,.7,.3,1);
+  --slow:.34s cubic-bezier(.2,.7,.3,1);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Página
+   ────────────────────────────────────────────────────────────── */
+.finance-page{
+  display:grid;
+  gap:14px;
+  padding-bottom:8px;
+  color:var(--ink);
+  background:
+    radial-gradient(1200px 400px at -10% -40%, rgba(144,213,255,.18), transparent 60%),
+    radial-gradient(1000px 380px at 110% -30%, rgba(45,139,239,.10), transparent 60%),
+    linear-gradient(180deg,#FAFBFF 0%, var(--bg) 100%);
+  animation: fd-in .24s ease;
+}
+@keyframes fd-in{
+  from{opacity:0; transform: translateY(4px)}
+  to{opacity:1; transform: translateY(0)}
+}
+
+/* topo (título + mês) */
+.fin-head{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.fin-head h3{
+  margin:0; font-size:1.125rem; font-weight:900; letter-spacing:.2px;
+  /* degradê padrão (azul da marca) */
+  background: linear-gradient(90deg, var(--brand-700), var(--brand-400));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+
+/* variações de cor do título (opcional) */
+.fin-head h3.title--dashboard{
+  background: linear-gradient(90deg, #1E6ECB, #90D5FF);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.fin-head h3.title--paid{
+  background: linear-gradient(90deg, #0ea5e9, #22c55e);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.fin-head h3.title--awaiting{
+  background: linear-gradient(90deg, #1E6ECB, #f59e0b);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+
+.fin-inline{ display:inline-flex; align-items:center; gap:10px; color:var(--muted); }
+.fin-inline input[type="month"], .fin-inline select{
+  appearance:none; border:1px solid var(--line); background:var(--white);
+  color:var(--ink); border-radius:12px; padding:8px 10px; font:inherit;
+  transition:border-color var(--fast), box-shadow var(--fast), transform var(--fast);
+}
+.fin-inline input[type="month"]:focus,
+.fin-inline select:focus{
+  outline:none; border-color:var(--brand-500); box-shadow:0 0 0 3px var(--ring);
+  transform:translateY(-1px);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Botões utilitários
+   ────────────────────────────────────────────────────────────── */
+.btn-ghost{
+  appearance:none; border:1px solid var(--line); background:#fff; color:var(--brand-700);
+  padding:8px 12px; border-radius:10px; font-weight:700; font-size:.85rem;
+  transition:transform var(--fast), box-shadow var(--fast), border-color var(--fast);
+  box-shadow:0 4px 12px rgba(2,8,23,.06);
+  cursor:pointer;
+}
+.btn-ghost:hover{ transform:translateY(-1px); box-shadow:0 8px 18px rgba(2,8,23,.10); border-color:rgba(2,8,23,.08); }
+
+/* ──────────────────────────────────────────────────────────────
+   Cards (glass + 3D)
+   ────────────────────────────────────────────────────────────── */
+.fin-card{
+  position:relative; overflow:hidden;
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.92));
+  border:1px solid var(--line);
+  border-radius:var(--radius-xl);
+  padding:14px;
+  box-shadow:var(--shadow-1);
+  transition:transform var(--slow), box-shadow var(--slow), border-color var(--fast);
+}
+.fin-card::before{
+  content:""; position:absolute; inset:0 0 auto 0; height:34px;
+  background:linear-gradient(180deg,rgba(255,255,255,.65),transparent);
+  pointer-events:none;
+}
+.fin-card::after{
+  content:""; position:absolute; right:-20%; top:-40%; width:60%; height:120%;
+  background:radial-gradient(ellipse at top right, rgba(255,255,255,.14), transparent 60%);
+  transform:rotate(12deg); pointer-events:none;
+}
+.fin-card:hover{ transform:translateY(-2px); box-shadow:var(--shadow-2); border-color:rgba(2,8,23,.06); }
+
+/* Evitar reflow dos charts quando o usuário passa o mouse */
+.chart-card{ will-change:auto; }
+.chart-card:hover{ transform:none; box-shadow:var(--shadow-1); }
+
+/* ──────────────────────────────────────────────────────────────
+   KPIs
+   ────────────────────────────────────────────────────────────── */
+.kpi{
+  display:grid; grid-template-columns:44px 1fr; gap:10px; align-items:center;
+  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.92));
+  border:1px solid var(--line); border-radius:16px; padding:12px;
+  box-shadow:0 8px 22px rgba(15,23,42,.06);
+  transition:transform var(--fast), box-shadow var(--fast);
+}
+.kpi:hover{ transform:translateY(-1px); box-shadow:0 12px 26px rgba(2,8,23,.10); }
+.kpi-icon{
+  width:44px; height:44px; display:grid; place-items:center; border-radius:12px;
+  background:
+    radial-gradient(circle at 30% 30%, #eff6ff, #dbeafe 70%),
+    linear-gradient(180deg, rgba(93, 166, 247, .10), rgba(144,213,255,.18));
+  color:var(--brand-600);
+  box-shadow: inset 0 0 0 1px rgba(45,139,239,.18);
+}
+.kpi-title{ font-size:.82rem; color:var(--muted); letter-spacing:.2px; }
+.kpi-value{ font-size:1.35rem; font-weight:900; color:var(--ink); line-height:1.2; }
+
+/* ──────────────────────────────────────────────────────────────
+   Grids utilitários
+   ────────────────────────────────────────────────────────────── */
+.fin-grid-2{ display:grid; gap:12px; }
+@media (min-width:1024px){ .fin-grid-2{ grid-template-columns:1.2fr .8fr; } }
+
+/* ──────────────────────────────────────────────────────────────
+   Tabelas/listas
+   ────────────────────────────────────────────────────────────── */
+.table{ display:grid; gap:8px; }
+.thead, .tr{
+  display:grid; grid-template-columns:1fr 160px; align-items:center;
+}
+.thead{
+  font-weight:700; color:var(--muted); border-bottom:1px dashed var(--line); padding-bottom:6px;
+}
+.tr{
+  background:var(--white); border:1px solid var(--line);
+  border-radius:14px; padding:10px 12px;
+  transition:transform var(--fast), box-shadow var(--fast), border-color var(--fast);
+}
+.tr:hover{ transform:translateY(-1px); box-shadow:0 10px 24px rgba(2,8,23,.10); border-color:rgba(2,8,23,.08); }
+.td,.th{ padding:4px 6px; color:var(--ink); }
+.td.right,.th.right{text-align:right;} .td.center,.th.center{text-align:center;}
+
+@media (min-width:920px){
+  /* para tabelas mais largas se necessário */
+  .table.table--wide .thead, .table.table--wide .tr{
+    grid-template-columns:1.2fr 1.2fr .6fr .6fr .6fr .6fr;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Recharts – coerente com o tema (caso use gráficos)
+   ────────────────────────────────────────────────────────────── */
+.recharts-wrapper{ overflow:visible !important; }
+.recharts-cartesian-grid-horizontal line{ stroke:var(--line); opacity:.75; }
+.recharts-xAxis .recharts-cartesian-axis-tick-value,
+.recharts-yAxis .recharts-cartesian-axis-tick-value{
+  font-weight:600; fill:var(--muted);
+}
+.recharts-tooltip-wrapper{ filter: drop-shadow(0 10px 28px rgba(8,18,40,.18)); }
+.recharts-default-tooltip{
+  background:rgba(255,255,255,.88) !important;
+  border:1px solid var(--line) !important; border-radius:12px !important;
+  backdrop-filter: blur(8px); color:var(--ink) !important;
+}
+/* fallback de cores para Area caso o componente não defina */
+.recharts-area-area{ fill:url(#areaBlue); }
+.recharts-area-curve{ stroke:var(--brand-600); stroke-width:2.25; }
+
+/* ──────────────────────────────────────────────────────────────
+   Donut legend + pequenos utilitários
+   ────────────────────────────────────────────────────────────── */
+.donut-legend{
+  display:grid; align-content:center; gap:10px; color:var(--ink);
+}
+.donut-legend > div{
+  display:flex; align-items:center; gap:8px; font-weight:700;
+}
+.dot{
+  width:10px; height:10px; display:inline-block; border-radius:999px;
+  box-shadow:0 0 0 3px rgba(2,8,23,.06);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Badges/Chips
+   ────────────────────────────────────────────────────────────── */
+.badge{
+  display:inline-flex; align-items:center; gap:6px;
+  height:26px; padding:0 10px; border-radius:999px; font-size:.75rem; font-weight:700;
+  border:1px solid var(--line); background:#fff; color:var(--muted);
+}
+.badge--ok{ color:#065f46; background:linear-gradient(180deg,#ecfdf5,#dcfce7); border-color:#bbf7d0; }
+.badge--warn{ color:#92400e; background:linear-gradient(180deg,#fffbeb,#fef3c7); border-color:#fde68a; }
+.badge--info{ color:#1e40af; background:linear-gradient(180deg,#eff6ff,#dbeafe); border-color:#bfdbfe; }
+
+/* ──────────────────────────────────────────────────────────────
+   Tags de status
+   ────────────────────────────────────────────────────────────── */
+.tag{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:.75rem; font-weight:800; }
+.tag--approved{ background:linear-gradient(90deg, rgba(59,130,246,.14), rgba(59,130,246,.10)); color:var(--brand-600); }
+.tag--paid{ background:linear-gradient(90deg, rgba(34,197,94,.16), rgba(34,197,94,.10)); color:#059669; }
+.tag--shared{ background:linear-gradient(90deg, rgba(245,158,11,.18), rgba(245,158,11,.12)); color:#a16207; }
+
+/* chips semana/data */
+.wk-chip, .wk-pill{
+  display:inline-flex; align-items:center; gap:8px;
+  border:1px solid var(--line); background:#fff; border-radius:999px;
+  padding:6px 10px; font-size:.8125rem; color:var(--ink-soft);
+  box-shadow:0 2px 10px rgba(15,23,42,.06);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Widgets — Clock & Weather
+   ────────────────────────────────────────────────────────────── */
+.widget{
+  position:relative;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.92)),
+    radial-gradient(120% 120% at 100% -20%, rgba(144,213,255,.12), transparent 60%);
+  border:1px solid var(--line);
+  border-radius:var(--radius-xl);
+  padding:14px;
+  box-shadow:var(--shadow-1);
+  overflow:hidden;
+}
+.widget::after{
+  content:""; position:absolute; right:-25%; top:-50%; width:60%; height:140%;
+  background:radial-gradient(ellipse at top right, rgba(144,213,255,.18), transparent 60%);
+  transform:rotate(10deg);
+}
+
+/* Clock */
+.widget-clock .time{
+  font-size:36px; font-weight:900; letter-spacing:.5px; color:var(--ink);
+}
+.widget-clock .meta{
+  color:var(--muted); font-weight:700;
+}
+
+/* Weather */
+.widget-weather .row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.widget-weather .temp{
+  font-size:34px; font-weight:900; color:var(--ink);
+}
+.widget-weather .cond{
+  display:flex; align-items:center; gap:8px; font-weight:800; color:var(--ink-soft);
+}
+.widget-weather .mini{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px;
+}
+.widget-weather .mini-item{
+  background:#fff; border:1px solid var(--line); border-radius:12px; padding:8px;
+  display:grid; gap:6px; text-align:center;
+  box-shadow:0 4px 14px rgba(15,23,42,.06);
+}
+.widget-weather .mini-item .label{ font-size:.75rem; color:var(--muted); font-weight:700; }
+.widget-weather .mini-item .val{ font-weight:900; color:var(--ink); }
+
+/* ──────────────────────────────────────────────────────────────
+   Pequenas animações
+   ────────────────────────────────────────────────────────────── */
+.fin-card > *{ animation: rise var(--slow); }
+@keyframes rise{ from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:translateY(0)} }
+/* To-Do styles */
+.todo-input{
+  flex:1; border:1px solid var(--line); background:#fff; color:var(--ink);
+  border-radius:12px; padding:10px 12px; font:inherit;
+  transition:border-color var(--fast), box-shadow var(--fast);
+}
+.todo-input:focus{ outline:none; border-color:var(--brand-500); box-shadow:0 0 0 3px var(--ring); }
+
+.todo-list{ display:grid; gap:8px; }
+.todo-row{
+  display:grid; grid-template-columns:28px 1fr 28px; align-items:center; gap:8px;
+  background:#fff; border:1px solid var(--line); border-radius:12px; padding:8px 10px;
+}
+.todo-check{
+  width:28px; height:28px; border-radius:10px; border:1px solid var(--line);
+  background:linear-gradient(180deg,#f8fbff,#eef5ff);
+  color:var(--brand-700); font-weight:800; cursor:pointer;
+}
+.todo-del{
+  width:28px; height:28px; border-radius:10px; border:1px solid var(--line);
+  background:#fff; color:#9ca3af; cursor:pointer;
+}
+.todo-del:hover{ color:#ef4444; border-color:#fecaca; }
+.todo-text{ color:var(--ink); font-weight:700; }
+
+/* Estilo especial para listas To be Paid e Awaiting Approval */
+.fin-card .td {
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: background var(--fast), color var(--fast);
+}
+
+/* Coluna esquerda (nome do parceiro) */
+.fin-card .td:first-child {
+  color: var(--ink-soft);
+}
+
+/* Coluna direita (valor) */
+.fin-card .td.right {
+  text-align: right;
+  font-weight: 800;
+  color: var(--brand-700);
+}
+
+/* Hover na linha inteira – agora sem highlight */
+.fin-card .tr:hover .td {
+  background: none;
+  color: inherit;
+}

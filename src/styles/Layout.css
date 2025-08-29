@@ -1,0 +1,151 @@
+/* ==================== TOKENS BASE (layout claro) ==================== */
+:root{
+  --pm-bg:#F7F9FC;
+  --pm-card:#FFFFFF;
+  --pm-ink:#0F172A;
+  --pm-muted:#64748B;
+  --pm-line:#E5EAF1;
+  --pm-blue-50:#F0F7FF;
+  --pm-blue-100:#E8F1FF;
+  --pm-blue-200:#D7E6FF;
+  --pm-blue-600:#2563EB;
+  --pm-shadow:0 8px 28px rgba(15,23,42,.08);
+}
+
+/* ========= estrutura principal ========= */
+.app-layout{ background:var(--pm-bg); }
+.partner-mobile .main-content{ margin-left:0 !important; }
+.page-content{ padding:16px; }
+@media (min-width:1025px){ .page-content{ padding:24px; } }
+
+/* ========= header (admin mantém como já está; partner recebe classe extra) ========= */
+.app-header{
+  height:72px; padding:0 16px; background:#fff; border-bottom:1px solid var(--pm-line);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.page-info .page-title{
+  font-size:22px; font-weight:800; letter-spacing:-.2px; color:#0F172A; margin:0;
+}
+.page-info .page-subtitle{
+  font-size:13px; color:var(--pm-muted); margin-top:8px; line-height:1.4; /* respiro extra */
+}
+
+/* partner header (escura, estilo carteira) */
+.app-header.partner-header{
+  background: linear-gradient(180deg, #122443 0%, #0E1A2F 100%);
+  color:#fff;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  box-shadow: 0 2px 10px rgba(2,6,23,.25);
+}
+.app-header.partner-header .page-title{
+  color:#fff !important; background:none !important; -webkit-text-fill-color:currentColor !important;
+}
+.app-header.partner-header .page-subtitle{
+  color:rgba(255,255,255,.85);
+}
+
+/* esconder itens no partner mobile (fica só o menu de 3 pontos) */
+.partner-mobile .header-clock,
+.partner-mobile .user-profile,
+.partner-mobile .header-btn,
+.partner-mobile .logout-btn { display:none !important; }
+
+/* kebab – menu de 3 pontos (mostrado apenas no partner mobile) */
+.header-kebab{ display:none; }
+.partner-mobile .header-kebab{ display:flex; align-items:center; }
+.kebab{ position:relative; }
+.kebab summary{
+  list-style:none; display:flex; align-items:center; justify-content:center;
+  width:36px; height:36px; border-radius:10px;
+  border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.10); color:#fff; cursor:pointer;
+}
+.kebab summary::-webkit-details-marker{ display:none; }
+.kebab[open] summary{ background:rgba(255,255,255,.16); }
+
+.kebab-menu{
+  position:absolute; right:0; top:44px; z-index:50;
+  background:#0F172A; color:#fff;
+  border:1px solid rgba(255,255,255,.12); border-radius:12px; min-width:180px;
+  box-shadow:var(--pm-shadow); padding:6px;
+}
+.kebab-item{
+  width:100%; display:flex; align-items:center; gap:8px;
+  padding:10px 12px; border-radius:10px; border:0; background:transparent; cursor:pointer;
+  color:#E2E8F0; font-weight:700; font-size:14px;
+}
+.kebab-item:hover{ background:rgba(255,255,255,.06); }
+.kebab-item.danger{ color:#FCA5A5; }
+
+/* header compacta no partner mobile e deixa 2 linhas */
+@media (max-width:768px){
+  .app-header.partner-header{ height:auto; min-height:92px; padding:10px 16px 12px; flex-wrap:wrap; row-gap:6px; align-items:flex-start; }
+  .app-header.partner-header .header-left,
+  .app-header.partner-header .header-right{ width:100%; }
+  .app-header.partner-header .header-right{ justify-content:flex-end; gap:10px; }
+  .app-header.partner-header .page-title{ font-size:20px; }
+  .app-header.partner-header .page-subtitle{ font-size:12px; }
+}
+
+/* ========= sidebar/drawer (sem alterar admin; apenas transições e overlay) ========= */
+.sidebar{ transition:transform .28s ease, width .28s ease; }
+.main-content{ transition: margin-left .28s ease; }
+.backdrop{
+  position:fixed; inset:0; background:rgba(2,6,23,0.45);
+  backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); z-index:900;
+}
+
+/* ========= tabbar inferior ========= */
+.mobile-tabbar{
+  position:fixed; left:0; right:0; bottom:0; z-index:1100;
+  height:64px; padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+  display:flex; align-items:center; justify-content:space-around; gap:6px;
+  background:rgba(255,255,255,.92); border-top:1px solid #E2E8F0;
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+}
+.partner-mobile .mobile-tabbar{
+  background: rgba(13, 19, 45, .90);
+  border-top-color: rgba(255,255,255,.08);
+}
+.mtab{
+  flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:100%; gap:4px; border:0; background:transparent; border-radius:12px; cursor:pointer;
+  color:#64748B; font-size:11px; font-weight:700; letter-spacing:.2px;
+}
+.mtab.active{ color:#1E40AF; background:rgba(144,213,255,.16); }
+.partner-mobile .mtab{ color:#B6C2CF; }
+.partner-mobile .mtab.active{ color:#FFFFFF; background:rgba(30,144,255,.16); }
+
+/* evitar conteúdo ficar atrás da tabbar no partner */
+.partner-mobile .page-content{ padding-bottom:calc(72px + env(safe-area-inset-bottom)); }
+
+/* utilitário */
+.page-title{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* --- Perfil: isolar pilha e priorizar inputs de senha --- */
+.page-profile .profile-card { 
+  position: relative; 
+  isolation: isolate;       /* impede overlays "vazarem" do header/avatar */
+}
+
+.page-profile .profile-rows,
+.page-profile .profile-section,
+.page-profile .profile-row,
+.page-profile .profile-edit,
+.page-profile .profile-actions {
+  position: relative;
+  z-index: 0;
+}
+
+.page-profile .profile-row input,
+.page-profile .profile-row button,
+.page-profile .profile-actions .btn {
+  position: relative;
+  z-index: 3;               /* acima de qualquer overlay local */
+  pointer-events: auto;
+}
+
+/* O input de arquivo do avatar fica contido ao próprio botão */
+.page-profile .profile-upload { position: relative; overflow: hidden; z-index: 1; }
+.page-profile .profile-upload input[type="file"]{
+  position:absolute; inset:0; opacity:0; cursor:pointer; 
+  z-index: 1;                 /* abaixo dos campos de senha (z=3) */
+}

@@ -1,0 +1,122 @@
+/* ===== Costs Page Specific ===== */
+
+/* Ajusta título e descrição da página */
+.services-page .header-info h1 {
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.services-page .header-info p {
+  font-size: 0.95rem;
+  color: #666;
+}
+
+/* Layout compacto para campos do form de custos */
+.form-row-compact-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.form-row-compact-4 .field {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Alinhamento de campos numéricos */
+.form-input[type="number"] {
+  text-align: right;
+}
+
+/* Tabela de custos */
+.services-table .table-header,
+.services-table .table-row {
+  grid-template-columns: 1.2fr 0.6fr 0.9fr 0.9fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr;
+}
+
+.services-table .table-cell {
+  font-size: 0.9rem;
+}
+
+/* Botões de ação menores na tabela */
+.action-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.action-btn {
+  padding: 4px;
+  border-radius: 4px;
+  background-color: transparent;
+  border: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.action-btn.edit-btn {
+  border-color: #007bff;
+  color: #007bff;
+}
+
+.action-btn.delete-btn {
+  border-color: #dc3545;
+  color: #dc3545;
+}
+
+.action-btn:hover {
+  opacity: 0.8;
+}
+
+/* Botão cancelar edição */
+.clear-cart-btn {
+  background-color: #f5f5f5;
+  border: 1px solid #ccc;
+  color: #333;
+}
+
+.clear-cart-btn:hover {
+  background-color: #e4e4e4;
+}
+
+/* Filtros */
+.filters-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-select {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.clear-filters-btn {
+  align-self: flex-end;
+  padding: 6px 10px;
+  background-color: #f5f5f5;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.clear-filters-btn:hover {
+  background-color: #e4e4e4;
+}
+
+/* Estados vazios */
+.loading-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-style: italic;
+  color: #888;
+}

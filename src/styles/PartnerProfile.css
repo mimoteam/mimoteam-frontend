@@ -1,0 +1,123 @@
+/* ================== PartnerProfile (fix blink) ================== */
+
+.page-profile .p-card.profile-card{
+  display:grid;
+  gap:16px;
+  position:relative;
+  isolation:isolate; /* impede overlays vazarem entre seções */
+}
+
+/* Header / Avatar */
+.profile-header{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; isolation:isolate; }
+
+.profile-avatar img,
+.profile-avatar .profile-avatar-fallback{
+  width:84px; height:84px; border-radius:50%;
+  border:1px solid var(--line,#E2E8F0);
+  background:#e2e8f0; object-fit:cover; display:block;
+}
+.profile-avatar-fallback{
+  display:flex; align-items:center; justify-content:center;
+  font-weight:800; color:#334155;
+}
+
+/* ===== Botões – alto contraste + iOS-safe ===== */
+.page-profile .btn{
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+  user-select:none; -webkit-user-select:none;
+  border:1px solid #cbd5e1; background:#fff; color:#0f172a; font-weight:700;
+  border-radius:10px; padding:8px 12px; cursor:pointer;
+  box-shadow:0 1px 0 rgba(15,23,42,.04),0 1px 3px rgba(15,23,42,.06);
+  transition:transform .06s ease, background .2s ease, color .2s ease, box-shadow .2s ease, filter .15s ease;
+}
+.page-profile .btn:hover{ filter:brightness(.98); }
+.page-profile .btn:active{ transform:translateY(1px); }
+.page-profile .btn:focus,.page-profile .btn:focus-visible{
+  outline:none; box-shadow:0 0 0 4px var(--ring, rgba(144,213,255,.35));
+  background:inherit; color:inherit;
+}
+.page-profile .btn--primary{
+  background:linear-gradient(135deg, var(--brand-400,#90D5FF), var(--brand-500,#5BA7F7));
+  border-color:transparent; color:#fff;
+  box-shadow:0 8px 22px rgba(91,167,247,.35), 0 2px 6px rgba(0,0,0,.05);
+}
+.page-profile .btn--outline{ background:#fff; color:var(--brand-700,#1E6ECB); border-color:var(--brand-400,#90D5FF); }
+.page-profile .btn--danger{
+  background:linear-gradient(135deg,#ff8a8a,var(--danger,#e53e3e));
+  border-color:transparent; color:#fff;
+}
+.page-profile .btn--sm{ padding:6px 10px; font-size:13px; }
+
+/* Partner (dark) */
+.partner-mobile .page-profile .btn{ background:rgba(255,255,255,.14); border-color:rgba(255,255,255,.28); color:#fff; }
+.partner-mobile .page-profile .btn:hover{ background:rgba(255,255,255,.18); }
+.partner-mobile .page-profile .btn--outline{ background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.38); color:#fff; }
+.partner-mobile .page-profile .btn--primary{ background:linear-gradient(135deg,var(--accent,#5BA7F7),#1d4ed8); }
+.partner-mobile .page-profile .btn--danger{ background:linear-gradient(135deg,#f87171,#b91c1c); }
+
+/* Rows / Inputs */
+.profile-rows{ display:grid; gap:10px; }
+
+.profile-row{
+  display:grid; grid-template-columns:160px 1fr;
+  align-items:center; min-height:44px; /* evita “pulo” */
+}
+@media (max-width:480px){ .profile-row{ grid-template-columns:120px 1fr; } }
+
+.profile-edit{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* Inputs estáveis */
+.profile-input{
+  width:clamp(150px,42vw,260px);
+  padding:8px 10px; border:1px solid #E2E8F0; border-radius:8px;
+  background:#fff; color:#0f172a; font-size:14px;
+  transition:border-color .2s ease, box-shadow .2s ease;
+}
+.profile-input:focus{
+  outline:none; border-color:var(--brand-400,#90D5FF);
+  box-shadow:0 0 0 3px var(--ring, rgba(144,213,255,.30));
+}
+.profile-input:disabled{ background:#F8FAFC; color:#64748B; }
+
+/* Força visibilidade (mata qualquer regra antiga) */
+.profile-edit input,
+.profile-edit .profile-input{
+  display:block !important;
+  opacity:1 !important;
+  visibility:visible !important;
+}
+
+/* Dicas/valores */
+.profile-hint{ margin-top:6px; font-size:12px; color:var(--muted,#64748B); }
+.profile-readonly{ font-weight:600; }
+
+/* Seções */
+.profile-section{ margin-top:8px; padding-top:12px; border-top:1px dashed #E5E7EB; }
+.section-title{ font-weight:800; color:#1E293B; margin-bottom:8px; }
+.partner-mobile .page-profile .section-title{ color:var(--text); }
+
+/* Avatar upload confinado */
+.profile-avatar-actions{ display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.profile-upload{ position:relative; overflow:hidden; z-index:1; }
+.profile-upload input[type="file"]{
+  position:absolute; inset:0; width:100%; height:100%;
+  opacity:0; cursor:pointer; z-index:1; pointer-events:auto;
+}
+
+/* Ações (ex: Change Password) */
+.profile-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+
+/* ===== Empilhamento previsível ===== */
+.profile-header,
+.profile-rows,
+.profile-section,
+.profile-row{ position:relative; z-index:0; }
+
+.profile-row *{ pointer-events:auto; } /* evita “buracos” de eventos */
+
+.profile-row input,
+.profile-row button,
+.profile-actions .btn{
+  position:relative;
+  z-index:2; /* inputs/botões sempre acima do upload/decorações */
+}

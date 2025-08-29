@@ -1,0 +1,285 @@
+/* ================================
+   Users Page — CSS 100% compatível
+   com o JSX enviado (sem mudar JSX)
+   ================================ */
+
+:root {
+  --card-bg: #fff;
+  --card-bd: #e5e7eb;
+  --card-radius: 12px;
+  --shadow-1: 0 6px 20px rgba(17,24,39,0.06);
+  --shadow-2: 0 8px 20px rgba(17,24,39,0.05);
+  --ink-900: #111827;
+  --ink-700: #374151;
+  --ink-500: #6b7280;
+  --muted-bg: #f9fafb;
+  --accent: #90D5FF;
+}
+
+/* PAGE WRAPPER */
+.users-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* =======================
+   HEADER DA PÁGINA
+   (JSX: .pay-header/.pay-title)
+   ======================= */
+.pay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card-bg);
+  border: 1px solid var(--card-bd);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-1);
+}
+.pay-title h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: .2px;
+}
+.pay-title p {
+  margin: 2px 0 0 0;
+  color: var(--ink-500);
+  font-size: 13px;
+}
+
+/* =======================
+   CARDS
+   (JSX: .selection-card, .filters-card, .payments-list)
+   ======================= */
+.selection-card,
+.filters-card,
+.payments-list {
+  background: var(--card-bg);
+  border: 1px solid var(--card-bd);
+  border-radius: var(--card-radius);
+  padding: 12px;
+  box-shadow: var(--shadow-2);
+}
+
+/* Cabeçalhos internos de cards
+   (JSX: .selection-header, .list-header) */
+.selection-header,
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.selection-header h3,
+.list-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink-700);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.2;
+  position: relative;
+  padding-left: 14px;
+}
+.selection-header h3::before,
+.list-header h3::before {
+  content: "";
+  width: 8px; height: 8px;
+  border-radius: 3px;
+  background: var(--ink-900);
+  box-shadow: 0 0 0 4px rgba(17,24,39,0.08);
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+}
+
+/* =======================
+   FORM & FILTERS
+   (JSX: .filter, .filters-row)
+   ======================= */
+.filter label {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-700);
+  margin-bottom: 6px;
+}
+.filter input,
+.filter select {
+  width: 100%;
+  border: 1px solid var(--card-bd);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: inset 0 2px 10px rgba(17,24,39,0.03);
+  font-size: 14px;
+}
+
+.filters-row {
+  display: grid;
+  grid-template-columns: 220px 1fr 200px;
+  gap: 10px;
+  align-items: end;
+}
+
+/* =======================
+   TABELA
+   (JSX: .payments-list .table/.thead/.tbody/.tr/.td)
+   ======================= */
+.table {
+  width: 100%;
+  border: 1px solid var(--card-bd);
+  border-radius: var(--card-radius);
+  overflow: hidden;
+}
+
+.thead {
+  display: grid;
+  grid-template-columns: 1.1fr 0.7fr 0.9fr 0.9fr 1.1fr 0.9fr 0.9fr 180px;
+  align-items: center;
+  background: var(--muted-bg);
+  border-bottom: 1px solid var(--card-bd);
+  font-weight: 800;
+  color: var(--ink-700);
+}
+.tbody .tr {
+  display: grid;
+  grid-template-columns: 1.1fr 0.7fr 0.9fr 0.9fr 1.1fr 0.9fr 0.9fr 180px;
+  align-items: center;
+}
+.th, .td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tbody .tr:last-child .td { border-bottom: none; }
+
+.empty-row {
+  padding: 16px;
+  text-align: center;
+  color: var(--ink-500);
+}
+
+/* =======================
+   BOTÕES (BEM do JSX)
+   (JSX: .btn .btn--primary .btn--outline .btn--danger .btn--sm .btn-group)
+   ======================= */
+.btn {
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  transition: transform .04s ease, box-shadow .2s ease, background .2s ease, color .2s ease;
+  user-select: none;
+}
+.btn:active { transform: translateY(1px); }
+
+.btn--primary {
+  background: var(--ink-900);
+  color: #fff;
+  border-color: var(--ink-900);
+  box-shadow: 0 8px 22px rgba(17,24,39,0.18);
+}
+.btn--primary:hover { filter: brightness(1.02); }
+
+.btn--outline {
+  background: #fff;
+  color: var(--ink-900);
+  border: 1px solid var(--card-bd);
+}
+.btn--outline:hover { background: #f8fafc; }
+
+.btn--danger {
+  background: #fff;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+.btn--danger:hover { background: #fff5f5; }
+
+.btn--sm { padding: 8px 10px; font-size: 13px; }
+.btn--icon { padding: 8px; }
+
+.btn-group { display: inline-flex; gap: 8px; }
+
+/* =======================
+   PAGINAÇÃO
+   (JSX: .pagination, .pagination-info, .pagination-controls,
+         .pg-btn, .pg-pages, .pg-num, .pg-num.active)
+   ======================= */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+.pagination-info { color: var(--ink-500); font-size: 13px; }
+.pagination-controls { display: flex; align-items: center; gap: 8px; }
+
+.pg-btn,
+.pg-num {
+  border: 1px solid var(--card-bd);
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.pg-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.pg-pages { display: flex; gap: 6px; }
+.pg-num.active {
+  background: var(--ink-900);
+  color: #fff;
+  border-color: var(--ink-900);
+}
+
+/* =======================
+   UTILITÁRIOS
+   ======================= */
+.muted { color: var(--ink-500); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinning { animation: spin 1s linear infinite; }
+
+/* =======================
+   RESPONSIVO
+   ======================= */
+@media (max-width: 1024px) {
+  .filters-row { grid-template-columns: 1fr; }
+  .thead,
+  .tbody .tr {
+    grid-template-columns: 1.2fr 0.9fr 1fr 1fr 1.4fr 1fr 1fr 160px;
+  }
+}
+@media (max-width: 768px) {
+  .pay-header { padding: 12px; }
+  .pay-title h1 { font-size: 16px; }
+  .selection-header h3,
+  .list-header h3 { font-size: 15px; }
+
+  .thead,
+  .tbody .tr {
+    grid-template-columns: 1.2fr 0.9fr 1fr 0.9fr 1.4fr 1fr 0.9fr 140px;
+  }
+}
+@media (max-width: 640px) {
+  .thead,
+  .tbody .tr {
+    grid-template-columns: 1.6fr 1fr 1fr 1.8fr 1fr 140px; /* reduz colunas visíveis */
+  }
+  /* Esconde algumas colunas em telas muito pequenas (opcional) */
+  .thead .th:nth-child(3),
+  .thead .th:nth-child(4),
+  .thead .th:nth-child(7),
+  .tbody .tr .td:nth-child(3),
+  .tbody .tr .td:nth-child(4),
+  .tbody .tr .td:nth-child(7) { display: none; }
+}
