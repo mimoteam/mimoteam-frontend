@@ -1,4 +1,4 @@
-// frontend/src/api/costs.js
+// src/api/costs.js
 import { httpClient as api } from "./http";
 
 /* ---------------- helpers ---------------- */
@@ -21,7 +21,6 @@ const normalize = (res) => {
 const normId = (x) => ({ ...x, id: String(x?._id ?? x?.id) });
 
 /* ---------------- list ------------------- */
-// GET /costs  (retorna { items, total, page, pageSize })
 export const listCosts = async (params = {}) => {
   const { data } = await api.get("/costs", { params });
   const norm = normalize(data);
@@ -29,14 +28,12 @@ export const listCosts = async (params = {}) => {
 };
 
 /* ---------------- create ----------------- */
-// POST /costs
 export const createCost = async (payload) => {
   const { data } = await api.post("/costs", payload);
   return normId(data);
 };
 
 /* ---------------- update ----------------- */
-// PATCH /costs/:id  (fallback para PUT)
 export const updateCost = async (id, payload) => {
   try {
     const { data } = await api.patch(`/costs/${id}`, payload);
@@ -48,15 +45,12 @@ export const updateCost = async (id, payload) => {
 };
 
 /* ---------------- delete ----------------- */
-// DELETE /costs/:id
 export const deleteCost = async (id) => {
   const { data } = await api.delete(`/costs/${id}`);
   return data;
 };
 
 /* ---------------- import ----------------- */
-// POST /costs/import  { items: [...] }
-// Fallback: tenta /costs/bulk; se não existir, faz POST item a item.
 export const importCosts = async (items) => {
   try {
     const { data } = await api.post("/costs/import", { items });
@@ -65,10 +59,8 @@ export const importCosts = async (items) => {
     try {
       const { data } = await api.post("/costs/bulk", { items });
       return data;
-    } catch (e2) {
-      // fallback simples
+    } catch {
       const created = [];
-      // sequencial para manter simplicidade (pode paralelizar se preferir)
       for (const it of items) {
         const c = await createCost(it);
         created.push(c);
@@ -79,8 +71,6 @@ export const importCosts = async (items) => {
 };
 
 /* ---------------- export ----------------- */
-// GET /costs/export → array
-// Fallback: usa listCosts(pageSize alto) e devolve apenas os items
 export const exportCosts = async (params = {}) => {
   try {
     const { data } = await api.get("/costs/export", { params });
@@ -92,8 +82,6 @@ export const exportCosts = async (params = {}) => {
 };
 
 /* ---------------- clear all -------------- */
-// DELETE /costs  (apaga tudo)
-// Fallback: lista e deleta um a um
 export const clearAllCosts = async () => {
   try {
     const { data } = await api.delete("/costs");
@@ -101,15 +89,18 @@ export const clearAllCosts = async () => {
   } catch {
     const res = await listCosts({ page: 1, pageSize: 5000 });
     for (const r of res.items) {
-      // ignore erros individuais
       try { await deleteCost(r.id); } catch {}
     }
     return { ok: true, deleted: res.items.length };
   }
 };
 
+/* ---------- compat para Dashboard ---------- */
+export const fetchCosts = listCosts;
+
 export default {
   listCosts,
+  fetchCosts, // alias no default
   createCost,
   updateCost,
   deleteCost,

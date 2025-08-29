@@ -1,4 +1,4 @@
-// frontend/src/api/services.js
+// src/api/services.js
 import { httpClient as api } from './http';
 
 function buildQuery(params = {}) {
@@ -46,4 +46,14 @@ export function deleteService(id) {
   return api.delete(`/services/${id}`).then(r => r.data);
 }
 
-export default { fetchServices, createService, createServicesBulk, updateService, deleteService };
+/* ---------- compat para Dashboard ---------- */
+export const listServices = fetchServices;
+
+export default {
+  fetchServices,
+  listServices, // alias no default também
+  createService,
+  createServicesBulk,
+  updateService,
+  deleteService,
+};

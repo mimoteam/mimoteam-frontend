@@ -347,7 +347,6 @@ export async function deleteAvatar(userId) {
   for (const t of tries) {
     try {
       const r = await api(t.path, { method: t.method, body: t.body, params: t.params });
-      // se a API retornar o user, normaliza; caso contrário, apenas confirma
       const maybeUser = r?.user || r;
       const normalized = typeof maybeUser === "object" ? normalizeUser(maybeUser) : null;
       return { ok: true, user: normalized, avatarUrl: "" };
@@ -356,7 +355,7 @@ export async function deleteAvatar(userId) {
     }
   }
 
-  // 2) Fallback local: apenas confirma (o componente deve limpar o LS)
+  // 2) Fallback local
   return { ok: true, local: true, avatarUrl: "" };
 }
 
@@ -372,6 +371,8 @@ export async function deleteUser(id) {
 }
 
 /* ============== exports de compatibilidade ============== */
+// ✅ alias para telas antigas
+export const listUsers = fetchUsers;
 export const createUserApi = createUser;
 export const updateUserApi = updateUser;
 export const deleteUserApi = deleteUser;
@@ -379,6 +380,7 @@ export const deleteUserApi = deleteUser;
 /* default */
 export default {
   fetchUsers,
+  listUsers, // alias incluído no default também
   getMe,
   getUserById,
   createUser,
