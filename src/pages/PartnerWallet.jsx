@@ -4,7 +4,7 @@ import {
   CalendarDays, Check, X, DollarSign, BarChart3, TrendingUp, Clock,
   ChevronLeft, ChevronRight, ChevronDown, Calendar
 } from 'lucide-react';
-import { httpClient as api } from '../api/http'; // axios instance
+import { httpClient as api } from '../api/http';
 import '../styles/PartnerWallet.css';
 
 // ===== Helpers Semana (Qua→Ter) =====
@@ -27,20 +27,45 @@ function sameYYYYMM(iso, ym){
 
 const fmtUSD = (n) => `$${Number(n || 0).toFixed(2)}`;
 const NORM = (s) => String(s || '').toUpperCase();
-const isPendingForPartner = (p) => NORM(p.status) === 'SHARED'; // aguardando ação do parceiro
-const isVisibleToPartner  = (p) => NORM(p.status) !== 'PENDING'; // parceiro não vê PENDING
+const isPendingForPartner = (p) => NORM(p.status) === 'SHARED';
+const isVisibleToPartner  = (p) => NORM(p.status) !== 'PENDING';
+
+/** ---------- SERVICE TYPE LABELING ---------- */
+const SERVICE_LABELS = {
+  IN_PERSON_TOUR: 'In Person Tour',
+  VIRTUAL_TOUR: 'Virtual Tour',
+  CONCIERGE: 'Concierge',
+  COORDINATOR: 'Coordinator',
+  REIMBURSEMENT: 'Reimbursement',
+};
+
+const fmtServiceType = (v) => {
+  if (!v) return '—';
+  let raw = '';
+  if (typeof v === 'object' && v !== null) {
+    raw = v.name || v.label || v.id || v.code || '';
+  } else {
+    raw = String(v);
+  }
+  if (!raw) return '—';
+  const key = raw.trim().replace(/\s+/g, '_').replace(/-+/g, '_').toUpperCase();
+  if (SERVICE_LABELS[key]) return SERVICE_LABELS[key];
+  const spaced = raw.replace(/[_\-]+/g, ' ').trim().toLowerCase();
+  return spaced.replace(/\b\w/g, (c) => c.toUpperCase());
+};
+/** ------------------------------------------- */
 
 export default function PartnerWallet({ currentUser, coloredCards = true }) {
   const partnerId = currentUser?.id || currentUser?._id;
 
   // services cache (id -> obj)
   const [servicesById, setServicesById] = useState(new Map());
-  // payments sempre do backend (apenas do parceiro logado)
+  // payments
   const [payments, setPayments] = useState([]);
   const [loading, setLoading]   = useState(false);
 
   // filtros
-  const [statusFilter, setStatusFilter] = useState(''); // '', SHARED, APPROVED, PAID, DECLINED, ON_HOLD
+  const [statusFilter, setStatusFilter] = useState('');
   const defaultMonth = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
 
   // Payments by status
@@ -58,12 +83,12 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
   const [rejecting, setRejecting]       = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  // breakdown toggle (por pagamento)
+  // breakdown toggle
   const [openMap, setOpenMap] = useState({});
   const isOpen = (id) => !!openMap[id];
   const toggleOpen = (id) => setOpenMap(m => ({ ...m, [id]: !m[id] }));
 
-  // === detectar tela estreita para o breakdown “vertical” ===
+  // narrow layout
   const [isNarrow, setIsNarrow] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 720px)');
@@ -77,9 +102,9 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     };
   }, []);
 
-  // dropdown custom de status
+  // dropdown status
   const STATUS_OPTIONS = [
-    { value: '',         label: 'Pending' },   // default (SHARED + ON_HOLD)
+    { value: '',         label: 'Pending' }, // SHARED + ON_HOLD
     { value: 'SHARED',   label: 'Shared' },
     { value: 'APPROVED', label: 'Approved' },
     { value: 'PAID',     label: 'Paid' },
@@ -99,8 +124,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
   }, []);
   const statusLabel = STATUS_OPTIONS.find(o => o.value === statusFilter)?.label || 'Pending';
 
-  // ========================= CARREGAR PAYMENTS DO BACKEND =========================
-  // buscamos dois conjuntos (psMonth e apMonth) e unimos por id (evita sobrecarga e mantém flexibilidade dos meses)
+  // ========================= CARREGAR PAYMENTS =========================
   useEffect(() => {
     if (!partnerId) return;
     let alive = true;
@@ -115,11 +139,13 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
 
         const listA = Array.isArray(a?.data?.items) ? a.data.items : (Array.isArray(a?.data) ? a.data : []);
         const listB = Array.isArray(b?.data?.items) ? b.data.items : (Array.isArray(b?.data) ? b.data : []);
+
         // merge por id
         const map = new Map();
         [...listA, ...listB].forEach(p => map.set(p._id || p.id, { ...p, id: p._id || p.id }));
-        const merged = Array.from(map.values())
-          .filter(p => p.partnerId === partnerId); // segurança
+
+        // segurança por parceiro
+        const merged = Array.from(map.values()).filter(p => p.partnerId === partnerId);
 
         // ordena por semana/criação desc
         merged.sort((x,y) => new Date(y.weekStart || y.createdAt || 0) - new Date(x.weekStart || x.createdAt || 0));
@@ -136,8 +162,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     return () => { alive = false; };
   }, [partnerId, psMonth, apMonth]);
 
-  // ========================= CARREGAR SERVICES NECESSÁRIOS =========================
-  // quando a lista de payments muda, carregamos os services que faltam para os breakdowns
+  // ========================= CARREGAR SERVICES (breakdown) =========================
   useEffect(() => {
     if (!payments.length) return;
 
@@ -148,16 +173,18 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     if (missing.length === 0) return;
 
     let alive = true;
-
     (async () => {
       try {
-        // em lotes (caso haja muitos ids)
         const chunk = 80;
         const fetched = [];
         for (let i = 0; i < missing.length; i += chunk) {
-          const ids = missing.slice(i, i + chunk).join(',');
-          const r = await api.get('/services', { params: { ids, limit: missing.length } });
-          const items = Array.isArray(r?.data?.items) ? r.data.items : (Array.isArray(r?.data) ? r.data : []);
+          const idsArr = missing.slice(i, i + chunk);
+          const r = await api.get('/services', {
+            // compat: dev e prod
+            params: { 'ids[]': idsArr, ids: idsArr.join(','), pageSize: idsArr.length }
+          });
+          const items = Array.isArray(r?.data?.items) ? r.data.items
+            : (Array.isArray(r?.data) ? r.data : []);
           fetched.push(...items);
         }
         const next = new Map(servicesById);
@@ -172,18 +199,17 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
   }, [payments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ===== DERIVADOS =====
-  // Payments by status (filtra mês psMonth)
+  // Payments by status (filtro mês com fallback)
   const statusPayments = useMemo(() => {
     let arr = payments.slice();
-    if (statusFilter) {
-      arr = arr.filter(p => NORM(p.status) === statusFilter);
-    } else {
-      arr = arr.filter(p => isPendingForPartner(p) || NORM(p.status) === 'ON_HOLD');
-    }
-    arr = arr.filter(p =>
-      (p.weekStart && sameYYYYMM(p.weekStart, psMonth)) ||
-      (!p.weekStart && (sameYYYYMM(p.periodFrom, psMonth) || sameYYYYMM(p.periodTo, psMonth)))
-    );
+    if (statusFilter) arr = arr.filter(p => NORM(p.status) === statusFilter);
+    else arr = arr.filter(p => isPendingForPartner(p) || NORM(p.status) === 'ON_HOLD');
+
+    arr = arr.filter(p => {
+      const ref = p.weekStart || p.periodFrom || p.periodTo || p.createdAt;
+      return ref && sameYYYYMM(ref, psMonth);
+    });
+
     arr.sort((a,b) => new Date(b.weekStart || b.createdAt || 0) - new Date(a.weekStart || a.createdAt || 0));
     return arr;
   }, [payments, statusFilter, psMonth]);
@@ -191,14 +217,14 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
   const psTotalPages = Math.max(1, statusPayments.length || 1);
   const psCurrent = statusPayments[psPage - 1] || null;
 
-  // All payments (parceiro não enxerga PENDING) — filtro apMonth
+  // All payments (parceiro não vê PENDING) — filtro mês com fallback
   const allPaymentsFiltered = useMemo(() => {
     const arr = payments
       .filter(isVisibleToPartner)
-      .filter(p =>
-        (p.weekStart && sameYYYYMM(p.weekStart, apMonth)) ||
-        (!p.weekStart && (sameYYYYMM(p.periodFrom, apMonth) || sameYYYYMM(p.periodTo, apMonth)))
-      )
+      .filter(p => {
+        const ref = p.weekStart || p.periodFrom || p.periodTo || p.createdAt;
+        return ref && sameYYYYMM(ref, apMonth);
+      })
       .sort((a,b) => new Date(b.weekStart || b.createdAt || 0) - new Date(a.weekStart || a.createdAt || 0));
     return arr;
   }, [payments, apMonth]);
@@ -206,17 +232,22 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
   const apTotalPages = Math.max(1, allPaymentsFiltered.length || 1);
   const apCurrent = allPaymentsFiltered[apPage - 1] || null;
 
-  // Métricas — excluir PENDING
+  // Métricas — excluir PENDING (com fallback)
   const [weekMetrics, monthMetrics, pendingCount, yearTotal] = useMemo(() => {
     const { start, end } = getWeekWedTue(weekRef);
     const inWeek = payments.filter(p => {
       if (!isVisibleToPartner(p)) return false;
-      const ws = p.weekStart ? new Date(p.weekStart) : null;
-      return ws && ws >= start && ws <= end;
+      const ref = p.weekStart || p.createdAt;
+      const d = ref ? new Date(ref) : null;
+      return d && d >= start && d <= end;
     });
     const weekTotal = inWeek.reduce((sum, p) => sum + (Number(p.total) || 0), 0);
 
-    const inMonth = payments.filter(p => isVisibleToPartner(p) && p.weekStart && sameYYYYMM(p.weekStart, apMonth));
+    const inMonth = payments.filter(p => {
+      if (!isVisibleToPartner(p)) return false;
+      const ref = p.weekStart || p.periodFrom || p.periodTo || p.createdAt;
+      return ref && sameYYYYMM(ref, apMonth);
+    });
     const monthTotal = inMonth.reduce((sum, p) => sum + (Number(p.total) || 0), 0);
 
     const pendCount = payments.filter(p => isPendingForPartner(p)).length;
@@ -224,8 +255,9 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     const Y = new Date().getFullYear();
     const yCount = payments.filter(p => {
       if (!isVisibleToPartner(p)) return false;
-      const ws = p.weekStart ? new Date(p.weekStart) : null;
-      return ws && ws.getFullYear() === Y;
+      const ref = p.weekStart || p.createdAt;
+      const d = ref ? new Date(ref) : null;
+      return d && d.getFullYear() === Y;
     }).length;
 
     return [
@@ -239,7 +271,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
   // Reseta paginação ao mudar filtros
   useEffect(() => { setPsPage(1); }, [statusFilter, psMonth]);
 
-  // ===== AÇÕES (PATCH no backend) =====
+  // ===== AÇÕES =====
   const pushAuditLocal = (p, text) => {
     const list = Array.isArray(p.notesLog) ? p.notesLog.slice() : [];
     list.push({ id: crypto?.randomUUID?.() || `note_${Date.now()}`, at:new Date().toISOString(), text });
@@ -256,7 +288,6 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
       const upd = { ...(data || {}), id: data?._id || data?.id || p.id };
       setPayments(prev => prev.map(x => (x.id === p.id ? { ...x, ...upd } : x)));
     } catch (e) {
-      // atualiza localmente só pra UX (opcional) — comente se preferir estrito
       setPayments(prev => prev.map(x => (x.id === p.id ? { ...x, status: 'APPROVED', notesLog: pushAuditLocal(p, 'Partner approved') } : x)));
       console.warn('approve failed, applied optimistic update', e);
     }
@@ -275,7 +306,6 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
       const upd = { ...(data || {}), id: data?._id || data?.id || p.id };
       setPayments(prev => prev.map(x => (x.id === p.id ? { ...x, ...upd } : x)));
     } catch (e) {
-      // fallback otimista
       setPayments(prev => prev.map(x => (x.id === p.id ? { ...x, status: 'DECLINED', notesLog: pushAuditLocal(p, `Partner declined — ${rejectReason.trim()}`) } : x)));
       console.warn('reject failed, applied optimistic update', e);
     } finally {
@@ -292,14 +322,13 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     }
     return '—';
   };
+
   const linesForPayment = (p) => (p.serviceIds || []).map(id => servicesById.get(id)).filter(Boolean);
 
-  // tabela de breakdown reutilizável (desktop x vertical)
   const renderBreakdownTable = (lines) => {
     if (!lines?.length) return null;
 
     if (isNarrow) {
-      // VERTICAL: Date, Client e Amount
       return (
         <div className="table table--breakdown">
           <div className="thead">
@@ -350,7 +379,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                 </div>
                 <div className="td" data-label="Client">{client}</div>
                 <div className="td" data-label="Service">
-                  <div className="main">{s?.serviceType?.name || s?.serviceType || '—'}</div>
+                  <div className="main">{fmtServiceType(s?.serviceType || s?.serviceTypeId)}</div>
                 </div>
                 <div className="td" data-label="Park">{park}</div>
                 <div className="td center" data-label="Guests">{guests}</div>
@@ -480,7 +509,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                         <span>Details</span>
                         <strong className="muted">
                           {lines.length>0
-                            ? `${lines[0]?.serviceType?.name || 'Service'}${lines.length>1 ? ` +${lines.length-1}`:''}`
+                            ? `${fmtServiceType(lines[0]?.serviceType || lines[0]?.serviceTypeId)}${lines.length>1 ? ` +${lines.length-1}`:''}`
                             : '—'}
                         </strong>
                       </div>
