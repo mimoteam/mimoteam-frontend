@@ -500,7 +500,14 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                   <div className="wi-main">
                     <div className="wi-top">
                       <div className="wi-type"><CalendarDays size={16}/> Week • {weekLabel(p)}</div>
-                      <div className={`wi-status tag ${NORM(p.status).toLowerCase()}`}>{String(p.status || '').toLowerCase()}</div>
+                      <div className="wi-status-wrap" style={{display:'flex', gap:8, alignItems:'center'}}>
+                        <div className={`wi-status tag ${NORM(p.status).toLowerCase()}`}>{String(p.status || '').toLowerCase()}</div>
+                        {Array.isArray(p.notesLog) && p.notesLog.length > 0 && (
+                          <span className="tag notes" title="Notes on this payment">
+                            {p.notesLog.length} note{p.notesLog.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="wi-grid">
                       <div className="wi-row"><span>Partner</span><strong>{p.partnerName || '—'}</strong></div>
@@ -539,6 +546,20 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                       <div className="wpay-breakdown">
                         <div className="wpay-head">Details</div>
                         {lines.length ? renderBreakdownTable(lines) : <div className="wallet-empty" style={{margin:0}}>No service details.</div>}
+
+                        {Array.isArray(p.notesLog) && p.notesLog.length > 0 && (
+                          <>
+                            <div className="wpay-head" style={{marginTop:12}}>Notes</div>
+                            <div className="notes-list">
+                              {[...p.notesLog].reverse().map((n) => (
+                                <div key={n.id || n._id} className="note-item">
+                                  <div className="note-meta">{new Date(n.at).toLocaleString()}</div>
+                                  <div className="note-text">{n.text}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -608,8 +629,15 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                   <div className="wi-main">
                     <div className="wi-top">
                       <div className="wi-type"><Calendar size={16}/> {weekLabel(p)}</div>
-                      <div className={`wi-status tag ${NORM(p.status).toLowerCase()}`}>
-                        {String(p.status || '').toLowerCase()}
+                      <div className="wi-status-wrap" style={{display:'flex', gap:8, alignItems:'center'}}>
+                        <div className={`wi-status tag ${NORM(p.status).toLowerCase()}`}>
+                          {String(p.status || '').toLowerCase()}
+                        </div>
+                        {Array.isArray(p.notesLog) && p.notesLog.length > 0 && (
+                          <span className="tag notes" title="Notes on this payment">
+                            {p.notesLog.length} note{p.notesLog.length > 1 ? 's' : ''}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="wi-grid">
@@ -633,6 +661,20 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                       <div className="wpay-breakdown">
                         <div className="wpay-head">Details</div>
                         {lines.length ? renderBreakdownTable(lines) : <div className="wallet-empty" style={{margin:0}}>No service details.</div>}
+
+                        {Array.isArray(p.notesLog) && p.notesLog.length > 0 && (
+                          <>
+                            <div className="wpay-head" style={{marginTop:12}}>Notes</div>
+                            <div className="notes-list">
+                              {[...p.notesLog].reverse().map((n) => (
+                                <div key={n.id || n._id} className="note-item">
+                                  <div className="note-meta">{new Date(n.at).toLocaleString()}</div>
+                                  <div className="note-text">{n.text}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
