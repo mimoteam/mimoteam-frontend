@@ -2,10 +2,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar, DollarSign, Users, Trash2, Edit3, Save, Loader, Filter, Info,
-  Copy, ChevronDown, ChevronRight, Share2
+  Copy, ChevronDown, ChevronRight, Share2, PlusCircle
 } from 'lucide-react';
 import {
-  Settings, Eye, Calendar as CalIco, Building, Plane, Baby, Coffee, Car, Home,
+  Eye, Calendar as CalIco, Building, Plane, Baby, Coffee, Car, Home,
   DollarSign as DollarIco
 } from 'lucide-react';
 import { api } from '../api/http';
@@ -93,7 +93,6 @@ const useActivePartners = () => {
         }));
         if (alive) setList(active);
       } catch {
-        // fallback: localStorage (caso não tenha backend)
         try {
           const raw = localStorage.getItem('users_store_v1');
           const arr = raw ? JSON.parse(raw) : [];
@@ -139,7 +138,6 @@ const Payments = () => {
   // Pagamentos (backend)
   const [payments, setPayments] = useState([]);
 
-  const [hydrated, setHydrated] = useState(false); // apenas para controlar 1ª carga
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
 
@@ -158,12 +156,25 @@ const Payments = () => {
   const [payFilterMonth, setPayFilterMonth] = useState('');
   const [payFilterWeek, setPayFilterWeek] = useState('');
 
+  // ===== estado para edição de itens em DECLINED =====
+  const [eligibleMap, setEligibleMap] = useState({});     // paymentId -> [{id, ...}]
+  const [eligibleLoading, setEligibleLoading] = useState({}); // paymentId -> boolean
+  const [eligibleSel, setEligibleSel] = useState({});     // paymentId -> Set<string>
+
+  const setEligLoading = (pid, v) => setEligibleLoading(m => ({ ...m, [pid]: v }));
+  const setEligItems   = (pid, items) => setEligibleMap(m => ({ ...m, [pid]: Array.isArray(items) ? items : [] }));
+  const toggleEligSel  = (pid, sid) => setEligibleSel(m => {
+    const cur = new Set(m[pid] || []);
+    if (cur.has(sid)) cur.delete(sid); else cur.add(sid);
+    return { ...m, [pid]: cur };
+  });
+  const clearEligSel   = (pid) => setEligibleSel(m => ({ ...m, [pid]: new Set() }));
+
   // ======= Carregar dados iniciais do backend =======
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        // 1) Services (sem filtros na 1ª carga)
         const serv = await api.get('/services', { params: { limit: 500 } });
         const sItems = Array.isArray(serv?.items) ? serv.items : (Array.isArray(serv) ? serv : []);
         const rehydrated = sItems.map(item => {
@@ -185,7 +196,6 @@ const Payments = () => {
       }
 
       try {
-        // 2) Payments
         const pay = await api.get('/payments', { params: { pageSize: 500 } });
         const pItems = Array.isArray(pay?.items) ? pay.items : (Array.isArray(pay) ? pay : []);
         const list = pItems.map(p => ({
@@ -196,8 +206,6 @@ const Payments = () => {
       } catch {
         if (alive) setPayments([]);
       }
-
-      if (alive) setHydrated(true);
     })();
     return () => { alive = false; };
   }, []);
@@ -389,7 +397,7 @@ const Payments = () => {
       setSavingNoteFor(paymentId);
       const updated = await api.patch(`/payments/${paymentId}`, {
         notes: text,
-        appendNote: true, // backend vai entender e anexar em notesLog
+        appendNote: true,
       });
       setPayments(prev => prev.map(p => (p.id === paymentId || p._id === paymentId) ? {
         ...p,
@@ -401,6 +409,68 @@ const Payments = () => {
       alert(e?.data?.message || e.message || 'Failed to save note');
     } finally {
       setSavingNoteFor(null);
+    }
+  };
+
+  // ====== Edição de itens quando DECLINED ======
+  const canEditItems = (p) => p.status === 'DECLINED';
+  const canShare = (p) => p.status === 'PENDING' || p.status === 'ON_HOLD' || p.status === 'DECLINED';
+
+  const loadEligibleFor = async (p) => {
+    const pid = p.id || p._id;
+    if (!pid || !p.partnerId) return;
+    try {
+      setEligLoading(pid, true);
+      const params = {
+        partner: p.partnerId,
+        dateFrom: p.weekStart || p.periodFrom || null,
+        dateTo: p.weekEnd || p.periodTo || null,
+        serviceType: 'ALL',
+      };
+      const resp = await api.get('/payments/eligible', { params });
+      const items = Array.isArray(resp?.items) ? resp.items : (Array.isArray(resp) ? resp : []);
+      setEligItems(pid, items.map(s => ({ ...s, id: s.id || s._id })));
+      clearEligSel(pid);
+    } catch {
+      setEligItems(pid, []);
+    } finally {
+      setEligLoading(pid, false);
+    }
+  };
+
+  const addSelectedToPayment = async (p) => {
+    const pid = p.id || p._id;
+    const sel = Array.from(eligibleSel[pid] || []);
+    if (!sel.length) return;
+
+    let cur = null;
+    try {
+      setEligLoading(pid, true);
+      for (const sid of sel) {
+        cur = await api.post(`/payments/${pid}/items`, { serviceId: sid });
+      }
+      if (cur) {
+        const updated = { ...cur, id: cur._id || cur.id || pid };
+        setPayments(prev => prev.map(x => (x.id === pid ? { ...x, ...updated } : x)));
+      }
+      setEligItems(pid, (eligibleMap[pid] || []).filter(s => !sel.includes(s.id)));
+      clearEligSel(pid);
+    } catch (e) {
+      alert(e?.data?.message || e.message || 'Failed to add services');
+    } finally {
+      setEligLoading(pid, false);
+    }
+  };
+
+  const removeServiceFromPayment = async (p, serviceId) => {
+    const pid = p.id || p._id;
+    try {
+      const updated = await api.delete(`/payments/${pid}/items/${serviceId}`);
+      const next = { ...updated, id: updated?._id || updated?.id || pid };
+      setPayments(prev => prev.map(x => (x.id === pid ? { ...x, ...next } : x)));
+      setEligItems(pid, [ ...(eligibleMap[pid] || []), serviceById.get(serviceId) ].filter(Boolean));
+    } catch (e) {
+      alert(e?.data?.message || e.message || 'Failed to remove service');
     }
   };
 
@@ -496,7 +566,7 @@ const Payments = () => {
       return nx;
     });
   };
-  const canShare = (p) => p.status === 'PENDING' || p.status === 'ON_HOLD';
+
   const sharePayment = (p) => { if (canShare(p)) setPaymentStatus(p.id, 'SHARED'); };
 
   // ===== Render =====
@@ -684,7 +754,7 @@ const Payments = () => {
             <span className="muted"><Info size={14}/> From API</span>
           </div>
 
-          {/* Filtros (PARTNER / MÊS / SEMANA) */}
+        {/* Filtros (PARTNER / MÊS / SEMANA) */}
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
             <div className="filter" style={{ minWidth: 220 }}>
               <label><Users size={13}/> Partner</label>
@@ -767,7 +837,12 @@ const Payments = () => {
                   <div className="td center">
                     <button
                       className="btn btn--outline btn--sm"
-                      onClick={() => toggleExpand(p.id)}
+                      onClick={async () => {
+                        toggleExpand(p.id);
+                        if (!expanded.has(p.id) && canEditItems(p)) {
+                          await loadEligibleFor(p);
+                        }
+                      }}
                       title={isOpen ? 'Hide breakdown' : 'Show breakdown'}
                     >
                       {isOpen ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
@@ -807,9 +882,9 @@ const Payments = () => {
                           className="btn btn--primary btn--sm"
                           onClick={() => sharePayment(p)}
                           disabled={!canShare(p)}
-                          title={canShare(p) ? 'Share with partner' : 'Cannot share in current status'}
+                          title={canShare(p) ? (p.status === 'DECLINED' ? 'Share again' : 'Share with partner') : 'Cannot share in current status'}
                         >
-                          <Share2 size={16}/> Shared
+                          <Share2 size={16}/> {p.status === 'DECLINED' ? 'Share again' : 'Shared'}
                         </button>
 
                         <button
@@ -852,6 +927,7 @@ const Payments = () => {
                             <div className="th center">Guests</div>
                             <div className="th center">Hopper</div>
                             <div className="th right">Amount</div>
+                            {canEditItems(p) && <div className="th center"> </div>}
                           </div>
                           <div className="tbody">
                             {lines.map(s => (
@@ -867,15 +943,108 @@ const Payments = () => {
                                 <div className="td center">{s.guests ?? '—'}</div>
                                 <div className="td center">{s.hopper ? 'Yes' : 'No'}</div>
                                 <div className="td right">{formatCurrency(s.finalValue)}</div>
+                                {canEditItems(p) && (
+                                  <div className="td center">
+                                    <button
+                                      className="btn btn--danger btn--sm"
+                                      title="Remove from payment"
+                                      onClick={() => removeServiceFromPayment(p, s.id)}
+                                    >
+                                      <Trash2 size={14}/>
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             ))}
-                            <div className="tr"><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td right" style={{ fontWeight: 300 }}>Subtotal</div><div className="td right" style={{ fontWeight: 300 }}>{formatCurrency(subtotal)}</div></div>
-                            <div className="tr"><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td right" style={{ fontWeight: 800, color: '#111827' }}>Total</div><div className="td right" style={{ fontWeight: 800, color: '#111827' }}>{formatCurrency(p.total)}</div></div>
+                            <div className="tr">
+                              <div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td right" style={{ fontWeight: 300 }}>Subtotal</div><div className="td right" style={{ fontWeight: 300 }}>{formatCurrency(subtotal)}</div>{canEditItems(p) && <div className="td" />}
+                            </div>
+                            <div className="tr">
+                              <div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td right" style={{ fontWeight: 800, color: '#111827' }}>Total</div><div className="td right" style={{ fontWeight: 800, color: '#111827' }}>{formatCurrency(p.total)}</div>{canEditItems(p) && <div className="td" />}
+                            </div>
                           </div>
                         </div>
                       )}
 
-                      <div className="notes">
+                      {/* Bloco: adicionar serviços quando DECLINED */}
+                      {canEditItems(p) && (
+                        <div className="eligible-box" style={{ marginTop: 14 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, flexWrap:'wrap' }}>
+                            <h4 style={{ margin:0, fontSize:14, fontWeight:600 }}>Add services to this payment</h4>
+                            <button
+                              className="btn btn--outline btn--sm"
+                              onClick={() => loadEligibleFor(p)}
+                              disabled={eligibleLoading[p.id]}
+                              title="Reload eligible services (not in any payment)"
+                            >
+                              {eligibleLoading[p.id] ? <Loader size={14} className="animate-spin" /> : <PlusCircle size={14} />}
+                              Reload list
+                            </button>
+                            <span className="muted" style={{ fontSize:12 }}>
+                              Period: {renderWeekRange(p)} • Partner: {p.partnerName}
+                            </span>
+                          </div>
+
+                          <div className="table table--selection" style={{ border:'1px dashed #e5e7eb' }}>
+                            <div className="thead">
+                              <div className="th center">#</div>
+                              <div className="th">Date</div>
+                              <div className="th">Client</div>
+                              <div className="th">Service</div>
+                              <div className="th right">Amount</div>
+                            </div>
+                            <div className="tbody">
+                              {(eligibleMap[p.id] || []).length === 0 ? (
+                                <div className="empty-row">No eligible services for this period.</div>
+                              ) : (
+                                (eligibleMap[p.id] || []).map(s => {
+                                  const checked = (eligibleSel[p.id] || new Set()).has(s.id);
+                                  const svcName =
+                                    serviceTypes.find(t => t.id === (s.serviceTypeId ?? s.serviceType))?.name ||
+                                    s?.serviceType?.name ||
+                                    s.serviceTypeId || '—';
+                                  return (
+                                    <div key={s.id} className="tr">
+                                      <div className="td center">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => toggleEligSel(p.id, s.id)}
+                                        />
+                                      </div>
+                                      <div className="td">{s.serviceDate ? new Date(s.serviceDate).toLocaleDateString() : '—'}</div>
+                                      <div className="td">{`${s.firstName || ''} ${s.lastName || ''}`.trim() || '—'}</div>
+                                      <div className="td">{svcName}</div>
+                                      <div className="td right">{formatCurrency(s.finalValue)}</div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ display:'flex', justifyContent:'flex-end', marginTop:8, gap:8 }}>
+                            <button
+                              className="btn btn--outline btn--sm"
+                              onClick={() => clearEligSel(p.id)}
+                              disabled={!(eligibleSel[p.id] && eligibleSel[p.id].size)}
+                            >
+                              Clear selection
+                            </button>
+                            <button
+                              className="btn btn--primary btn--sm"
+                              onClick={() => addSelectedToPayment(p)}
+                              disabled={eligibleLoading[p.id] || !(eligibleSel[p.id] && eligibleSel[p.id].size)}
+                              title="Add selected services to this payment"
+                            >
+                              {eligibleLoading[p.id] ? <Loader size={14} className="animate-spin" /> : <PlusCircle size={14}/>}
+                              Add selected
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="notes" style={{ marginTop: 14 }}>
                         <label>Notes</label>
                         <textarea
                           value={noteDrafts[p.id] ?? ''}
@@ -940,7 +1109,11 @@ const Payments = () => {
               <div className="edit-head"><Info size={16}/><span>Edit payment notes • {pay.partnerName} • {pay.weekKey || renderWeekRange(pay)}</span></div>
               <textarea
                 value={pay.notes || ''}
-                onChange={(e) => setPayments(prev => prev.map(p => (p.id === pay.id) ? { ...p, notes: e.target.value } : p))}
+                onChange={(e) =>
+                  setPayments(prev =>
+                    prev.map(p => (p.id === pay.id) ? { ...p, notes: e.target.value } : p)
+                  )
+                }
                 rows={3}
                 placeholder="Add internal notes about this payment..."
               />
