@@ -22,6 +22,12 @@ const read = (k) => {
   }
 };
 
+const shallowEqualJSON = (a, b) => {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch { return false; }
+};
+
 function sameYYYYMM(iso, ym) {
   if (!iso || !ym) return false;
   const d = new Date(iso);
@@ -318,20 +324,111 @@ export default function FinanceDashboard({ payments: paymentsProp, services: ser
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
 
-  // Sincroniza quando as props mudarem (mesma aba)
-  useEffect(() => { if (paymentsProp) setPayments(paymentsProp); }, [paymentsProp]);
-  useEffect(() => { if (servicesProp) setServices(servicesProp); }, [servicesProp]);
+  /* ---------- sincronização reativa: props ---------- */
+  useEffect(() => { if (paymentsProp && !shallowEqualJSON(payments, paymentsProp)) setPayments(paymentsProp); }, [paymentsProp]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (servicesProp && !shallowEqualJSON(services, servicesProp)) setServices(servicesProp); }, [servicesProp]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Ainda escuta storage para outras abas/janelas quando não houver props
+  /* ---------- warm-up pós-montagem (captura writes logo após abrir a página) ---------- */
+  useEffect(() => {
+    if (paymentsProp) return;
+    const sync = () => {
+      const next = read(PAYMENTS_KEY);
+      setPayments(prev => shallowEqualJSON(prev, next) ? prev : next);
+    };
+    // executa já + alguns “pulsos” curtos
+    sync();
+    const t1 = setTimeout(sync, 250);
+    const t2 = setTimeout(sync, 1000);
+    const t3 = setTimeout(sync, 3000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [paymentsProp]);
+
+  useEffect(() => {
+    if (servicesProp) return;
+    const sync = () => {
+      const next = read(SERVICES_KEY);
+      setServices(prev => shallowEqualJSON(prev, next) ? prev : next);
+    };
+    sync();
+    const t1 = setTimeout(sync, 250);
+    const t2 = setTimeout(sync, 1000);
+    const t3 = setTimeout(sync, 3000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [servicesProp]);
+
+  /* ---------- storage (outras abas) ---------- */
   useEffect(() => {
     const onStorage = (e) => {
-      if (e.key === PAYMENTS_KEY && !paymentsProp) setPayments(read(PAYMENTS_KEY));
-      if (e.key === SERVICES_KEY && !servicesProp) setServices(read(SERVICES_KEY));
+      if (e.key === PAYMENTS_KEY && !paymentsProp) {
+        const next = read(PAYMENTS_KEY);
+        setPayments(prev => shallowEqualJSON(prev, next) ? prev : next);
+      }
+      if (e.key === SERVICES_KEY && !servicesProp) {
+        const next = read(SERVICES_KEY);
+        setServices(prev => shallowEqualJSON(prev, next) ? prev : next);
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, [paymentsProp, servicesProp]);
 
+  /* ---------- foco/visibilidade (mesma aba) ---------- */
+  useEffect(() => {
+    const syncAll = () => {
+      if (!paymentsProp) {
+        const nextP = read(PAYMENTS_KEY);
+        setPayments(prev => shallowEqualJSON(prev, nextP) ? prev : nextP);
+      }
+      if (!servicesProp) {
+        const nextS = read(SERVICES_KEY);
+        setServices(prev => shallowEqualJSON(prev, nextS) ? prev : nextS);
+      }
+    };
+    const onFocus = () => syncAll();
+    const onVis = () => { if (document.visibilityState === "visible") syncAll(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => { window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onVis); };
+  }, [paymentsProp, servicesProp]);
+
+  /* ---------- BroadcastChannel (mesma origem / entre abas) ---------- */
+  useEffect(() => {
+    let ch;
+    try {
+      ch = new BroadcastChannel("mimo_services_updates");
+      ch.onmessage = (evt) => {
+        if (evt?.data === "changed") {
+          if (!paymentsProp) {
+            const nextP = read(PAYMENTS_KEY);
+            setPayments(prev => shallowEqualJSON(prev, nextP) ? prev : nextP);
+          }
+          if (!servicesProp) {
+            const nextS = read(SERVICES_KEY);
+            setServices(prev => shallowEqualJSON(prev, nextS) ? prev : nextS);
+          }
+        }
+      };
+    } catch {}
+    return () => { try { ch?.close(); } catch {} };
+  }, [paymentsProp, servicesProp]);
+
+  /* ---------- (opcional) polling leve contínuo para garantir frescor ---------- */
+  useEffect(() => {
+    if (paymentsProp && servicesProp) return; // se veio por props, não precisa
+    const id = setInterval(() => {
+      if (!paymentsProp) {
+        const nextP = read(PAYMENTS_KEY);
+        setPayments(prev => shallowEqualJSON(prev, nextP) ? prev : nextP);
+      }
+      if (!servicesProp) {
+        const nextS = read(SERVICES_KEY);
+        setServices(prev => shallowEqualJSON(prev, nextS) ? prev : nextS);
+      }
+    }, 5000); // 5s é suficiente e barato
+    return () => clearInterval(id);
+  }, [paymentsProp, servicesProp]);
+
+  /* ---------- derivadores ---------- */
   const sumServices = (p) =>
     (p.serviceIds || []).reduce((s, id) => {
       const sv = (services || []).find((x) => x.id === id);

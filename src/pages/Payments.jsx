@@ -2,10 +2,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar, DollarSign, Users, Trash2, Edit3, Save, Loader, Filter, Info,
-  Copy, ChevronDown, ChevronRight, Share2
+  Copy, ChevronDown, ChevronRight, Share2, PlusCircle
 } from 'lucide-react';
 import {
-  Settings, Eye, Calendar as CalIco, Building, Plane, Baby, Coffee, Car, Home,
+  Eye, Calendar as CalIco, Building, Plane, Baby, Coffee, Car, Home,
   DollarSign as DollarIco
 } from 'lucide-react';
 import { api } from '../api/http';
@@ -61,6 +61,21 @@ function within(dateIso, fromIso, toIso) {
   return t >= f && t <= tt;
 }
 
+// ===== Month anchor (mês com maioria dos dias no range) =====
+function anchorYYYYMMForRange(startIso, endIso) {
+  if (!startIso || !endIso) return null;
+  const s = new Date(startIso);
+  const e = new Date(endIso);
+  const count = new Map();
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    count.set(key, (count.get(key) || 0) + 1);
+  }
+  let best = null, bestN = -1;
+  for (const [k, n] of count) if (n > bestN) { best = k; bestN = n; }
+  return best;
+}
+
 // ===== Status =====
 const STATUS_META = {
   CREATING:  { name: 'creating',  color: '#6B7280' },
@@ -91,9 +106,8 @@ const useActivePartners = () => {
           email: u.email || '',
           role: u.role
         }));
-        if (alive) setList(active);
+      if (alive) setList(active.sort((a, b) => a.name.localeCompare(b.name)));
       } catch {
-        // fallback: localStorage (caso não tenha backend)
         try {
           const raw = localStorage.getItem('users_store_v1');
           const arr = raw ? JSON.parse(raw) : [];
@@ -108,7 +122,7 @@ const useActivePartners = () => {
               email: u.email || '',
               role: u.role
             }));
-          if (alive) setList(active);
+  if (alive) setList(active.sort((a, b) => a.name.localeCompare(b.name)));
         } catch { if (alive) setList([]); }
       }
     })();
@@ -139,7 +153,6 @@ const Payments = () => {
   // Pagamentos (backend)
   const [payments, setPayments] = useState([]);
 
-  const [hydrated, setHydrated] = useState(false); // apenas para controlar 1ª carga
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
 
@@ -158,12 +171,36 @@ const Payments = () => {
   const [payFilterMonth, setPayFilterMonth] = useState('');
   const [payFilterWeek, setPayFilterWeek] = useState('');
 
+  // ===== estado para edição de itens em DECLINED =====
+  const [eligibleMap, setEligibleMap] = useState({});     // paymentId -> [{id, ...}]
+  const [eligibleLoading, setEligibleLoading] = useState({}); // paymentId -> boolean
+  const [eligibleSel, setEligibleSel] = useState({});     // paymentId -> Set<string>
+
+  const setEligLoading = (pid, v) => setEligibleLoading(m => ({ ...m, [pid]: v }));
+  const setEligItems   = (pid, items) => setEligibleMap(m => ({ ...m, [pid]: Array.isArray(items) ? items : [] }));
+  const toggleEligSel  = (pid, sid) => setEligibleSel(m => {
+    const cur = new Set(m[pid] || []);
+    if (cur.has(sid)) cur.delete(sid); else cur.add(sid);
+    return { ...m, [pid]: cur };
+  });
+  const clearEligSel   = (pid) => setEligibleSel(m => ({ ...m, [pid]: new Set() }));
+
+  // ======= helpers de fetch =======
+  const refetchPayments = async () => {
+    try {
+      const pay = await api.get('/payments', { params: { pageSize: 500 } });
+      const pItems = Array.isArray(pay?.items) ? pay.items : (Array.isArray(pay) ? pay : []);
+      setPayments(pItems.map(p => ({ ...p, id: p._id || p.id })));
+    } catch {
+      // opcional: toast
+    }
+  };
+
   // ======= Carregar dados iniciais do backend =======
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        // 1) Services (sem filtros na 1ª carga)
         const serv = await api.get('/services', { params: { limit: 500 } });
         const sItems = Array.isArray(serv?.items) ? serv.items : (Array.isArray(serv) ? serv : []);
         const rehydrated = sItems.map(item => {
@@ -185,19 +222,10 @@ const Payments = () => {
       }
 
       try {
-        // 2) Payments
-        const pay = await api.get('/payments', { params: { pageSize: 500 } });
-        const pItems = Array.isArray(pay?.items) ? pay.items : (Array.isArray(pay) ? pay : []);
-        const list = pItems.map(p => ({
-          ...p,
-          id: p._id || p.id
-        }));
-        if (alive) setPayments(list);
+        await refetchPayments();
       } catch {
         if (alive) setPayments([]);
       }
-
-      if (alive) setHydrated(true);
     })();
     return () => { alive = false; };
   }, []);
@@ -326,20 +354,17 @@ const Payments = () => {
         weekKey: assignWeekKey || null,
         weekStart: weekStartISO,
         weekEnd: weekEndISO,
-        serviceIds: selected.map(s => s.id),
+        serviceIds: selected.map(s => String(s.id)),
         extraIds: [],
         total: Math.round(total * 100) / 100,
         status: 'PENDING',
         notes: '',
       };
 
-      const created = await api.post('/payments', payload);
-      const payment = { ...(created || payload), id: created?._id || created?.id || payload.id };
-
-      setPayments(prev => [payment, ...prev]);
+      await api.post('/payments', payload);
+      await refetchPayments();
       setSelectedServiceIds([]);
       setPayPage(1);
-      setExpanded(prev => { const nx = new Set(prev); nx.delete(payment.id); return nx; });
     } catch (e) {
       alert(e?.data?.message || e.message || 'Failed to create payment');
     } finally {
@@ -349,8 +374,8 @@ const Payments = () => {
 
   const setPaymentStatus = async (id, status) => {
     try {
-      const updated = await api.patch(`/payments/${id}`, { status });
-      setPayments(prev => prev.map(p => p.id === id || p._id === id ? { ...p, ...updated, id: updated?._id || updated?.id || id } : p));
+      await api.patch(`/payments/${id}`, { status });
+      await refetchPayments();
     } catch (e) {
       alert(e?.data?.message || e.message || 'Failed to update status');
     }
@@ -360,7 +385,7 @@ const Payments = () => {
     if (!window.confirm('Excluir este pagamento?')) return;
     try {
       await api.delete(`/payments/${id}`);
-      setPayments(prev => prev.filter(p => (p.id || p._id) !== id));
+      await refetchPayments();
       setExpanded(prev => { const nx = new Set(prev); nx.delete(id); return nx; });
     } catch (e) {
       alert(e?.data?.message || e.message || 'Failed to delete payment');
@@ -372,8 +397,8 @@ const Payments = () => {
 
   const saveEditPayment = async (id, patch) => {
     try {
-      const updated = await api.patch(`/payments/${id}`, patch);
-      setPayments(prev => prev.map(p => (p.id === id || p._id === id) ? { ...p, ...updated, id: updated?._id || updated?.id || id } : p));
+      await api.patch(`/payments/${id}`, patch);
+      await refetchPayments();
       setEditingPaymentId(null);
     } catch (e) {
       alert(e?.data?.message || e.message || 'Failed to save payment');
@@ -387,20 +412,72 @@ const Payments = () => {
 
     try {
       setSavingNoteFor(paymentId);
-      const updated = await api.patch(`/payments/${paymentId}`, {
+      await api.patch(`/payments/${paymentId}`, {
         notes: text,
-        appendNote: true, // backend vai entender e anexar em notesLog
+        appendNote: true,
       });
-      setPayments(prev => prev.map(p => (p.id === paymentId || p._id === paymentId) ? {
-        ...p,
-        ...updated,
-        id: updated?._id || updated?.id || paymentId
-      } : p));
+      await refetchPayments();
       setNoteDrafts(d => ({ ...d, [paymentId]: '' }));
     } catch (e) {
       alert(e?.data?.message || e.message || 'Failed to save note');
     } finally {
       setSavingNoteFor(null);
+    }
+  };
+
+  // ====== Edição de itens quando DECLINED ======
+  const canEditItems = (p) => p.status === 'DECLINED';
+  const canShare = (p) => p.status === 'PENDING' || p.status === 'ON_HOLD' || p.status === 'DECLINED';
+
+  const loadEligibleFor = async (p) => {
+    const pid = p.id || p._id;
+    if (!pid || !p.partnerId) return;
+    try {
+      setEligLoading(pid, true);
+      const params = {
+        partner: p.partnerId,
+        serviceType: 'ALL',
+        anyDate: 1, // pega todos os serviços não usados, de qualquer data
+      };
+      const resp = await api.get('/payments/eligible', { params });
+      const items = Array.isArray(resp?.items) ? resp.items : (Array.isArray(resp) ? resp : []);
+      setEligItems(pid, items.map(s => ({ ...s, id: s.id || s._id })));
+      clearEligSel(pid);
+    } catch {
+      setEligItems(pid, []);
+    } finally {
+      setEligLoading(pid, false);
+    }
+  };
+
+  const addSelectedToPayment = async (p) => {
+    const pid = p.id || p._id;
+    const sel = Array.from(eligibleSel[pid] || []);
+    if (!sel.length) return;
+
+    try {
+      setEligLoading(pid, true);
+      for (const sid of sel) {
+        await api.post(`/payments/${pid}/items`, { serviceId: sid });
+      }
+      await refetchPayments();
+      await loadEligibleFor({ ...p, id: pid }); // recarrega elegíveis
+      clearEligSel(pid);
+    } catch (e) {
+      alert(e?.data?.message || e.message || 'Failed to add services');
+    } finally {
+      setEligLoading(pid, false);
+    }
+  };
+
+  const removeServiceFromPayment = async (p, serviceId) => {
+    const pid = p.id || p._id;
+    try {
+      await api.delete(`/payments/${pid}/items/${serviceId}`);
+      await refetchPayments();
+      setEligItems(pid, [ ...(eligibleMap[pid] || []), serviceById.get(serviceId) ].filter(Boolean));
+    } catch (e) {
+      alert(e?.data?.message || e.message || 'Failed to remove service');
     }
   };
 
@@ -422,54 +499,36 @@ const Payments = () => {
     return '—';
   };
 
-  // ====== FILTROS: Generated Payments ======
-  const isSameYYYYMM = (iso, ym) => {
-    if (!iso || !ym) return false;
-    const d = new Date(iso);
-    const [y, m] = ym.split('-').map(Number);
-    return d.getFullYear() === y && (d.getMonth() + 1) === m;
-  };
-
+  // ====== Weeks dropdown baseado no mês-âncora ======
   const weeksForSelectedMonth = useMemo(() => {
     if (!payFilterMonth) return [];
-    let arr = payments;
-    if (payFilterPartner) arr = arr.filter(p => p.partnerId === payFilterPartner);
-    const set = new Map();
-    arr.forEach(p => {
-      if (p.weekStart && isSameYYYYMM(p.weekStart, payFilterMonth)) {
-        const key = p.weekKey || weekKey(new Date(p.weekStart));
-        if (!set.has(key)) {
-          set.set(key, { key, start: p.weekStart, end: p.weekEnd });
-        }
+    const [y, m] = payFilterMonth.split('-').map(Number);
+    const first = new Date(y, m - 1, 1);
+    const last = new Date(y, m, 0);
+    const map = new Map();
+    for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
+      const w = getPaymentWeek(d);
+      const anchor = anchorYYYYMMForRange(w.start.toISOString(), w.end.toISOString());
+      if (anchor === payFilterMonth && !map.has(w.key)) {
+        map.set(w.key, { key: w.key, start: w.start.toISOString(), end: w.end.toISOString() });
       }
-    });
-    if (set.size === 0) {
-      const [y, m] = payFilterMonth.split('-').map(Number);
-      const first = new Date(y, m - 1, 1);
-      const last = new Date(y, m, 0);
-      const temp = new Map();
-      for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
-        const w = getPaymentWeek(d);
-        const k = w.key;
-        if (isSameYYYYMM(w.start.toISOString(), payFilterMonth) && !temp.has(k)) {
-          temp.set(k, { key: k, start: w.start.toISOString(), end: w.end.toISOString() });
-        }
-      }
-      return Array.from(temp.values()).sort((a, b) => new Date(a.start) - new Date(b.start));
     }
-    return Array.from(set.values()).sort((a, b) => new Date(a.start) - new Date(b.start));
-  }, [payments, payFilterMonth, payFilterPartner]);
+    return Array.from(map.values()).sort((a, b) => new Date(a.start) - new Date(b.start));
+  }, [payFilterMonth]);
 
   useEffect(() => { setPayFilterWeek(''); }, [payFilterMonth]);
 
+  // ====== FILTROS: Generated Payments ======
   const filteredPayments = useMemo(() => {
     let arr = payments.slice();
     if (payFilterPartner) arr = arr.filter(p => p.partnerId === payFilterPartner);
     if (payFilterMonth) {
-      arr = arr.filter(p =>
-        (p.weekStart && isSameYYYYMM(p.weekStart, payFilterMonth)) ||
-        (!p.weekStart && (isSameYYYYMM(p.periodFrom, payFilterMonth) || isSameYYYYMM(p.periodTo, payFilterMonth)))
-      );
+      arr = arr.filter(p => {
+        const anchor = (p.weekStart && p.weekEnd)
+          ? anchorYYYYMMForRange(p.weekStart, p.weekEnd)
+          : (p.periodFrom && p.periodTo ? anchorYYYYMMForRange(p.periodFrom, p.periodTo) : null);
+        return anchor === payFilterMonth;
+      });
     }
     if (payFilterWeek) arr = arr.filter(p => p.weekKey === payFilterWeek);
     return arr;
@@ -496,7 +555,7 @@ const Payments = () => {
       return nx;
     });
   };
-  const canShare = (p) => p.status === 'PENDING' || p.status === 'ON_HOLD';
+
   const sharePayment = (p) => { if (canShare(p)) setPaymentStatus(p.id, 'SHARED'); };
 
   // ===== Render =====
@@ -684,7 +743,7 @@ const Payments = () => {
             <span className="muted"><Info size={14}/> From API</span>
           </div>
 
-          {/* Filtros (PARTNER / MÊS / SEMANA) */}
+        {/* Filtros (PARTNER / MÊS / SEMANA) */}
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
             <div className="filter" style={{ minWidth: 220 }}>
               <label><Users size={13}/> Partner</label>
@@ -767,7 +826,12 @@ const Payments = () => {
                   <div className="td center">
                     <button
                       className="btn btn--outline btn--sm"
-                      onClick={() => toggleExpand(p.id)}
+                      onClick={async () => {
+                        toggleExpand(p.id);
+                        if (!expanded.has(p.id) && canEditItems(p)) {
+                          await loadEligibleFor(p);
+                        }
+                      }}
                       title={isOpen ? 'Hide breakdown' : 'Show breakdown'}
                     >
                       {isOpen ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
@@ -807,9 +871,9 @@ const Payments = () => {
                           className="btn btn--primary btn--sm"
                           onClick={() => sharePayment(p)}
                           disabled={!canShare(p)}
-                          title={canShare(p) ? 'Share with partner' : 'Cannot share in current status'}
+                          title={canShare(p) ? (p.status === 'DECLINED' ? 'Share again' : 'Share with partner') : 'Cannot share in current status'}
                         >
-                          <Share2 size={16}/> Shared
+                          <Share2 size={16}/> {p.status === 'DECLINED' ? 'Share again' : 'Share'}
                         </button>
 
                         <button
@@ -852,6 +916,7 @@ const Payments = () => {
                             <div className="th center">Guests</div>
                             <div className="th center">Hopper</div>
                             <div className="th right">Amount</div>
+                            {canEditItems(p) && <div className="th center"> </div>}
                           </div>
                           <div className="tbody">
                             {lines.map(s => (
@@ -867,15 +932,108 @@ const Payments = () => {
                                 <div className="td center">{s.guests ?? '—'}</div>
                                 <div className="td center">{s.hopper ? 'Yes' : 'No'}</div>
                                 <div className="td right">{formatCurrency(s.finalValue)}</div>
+                                {canEditItems(p) && (
+                                  <div className="td center">
+                                    <button
+                                      className="btn btn--danger btn--sm"
+                                      title="Remove from payment"
+                                      onClick={() => removeServiceFromPayment(p, s.id)}
+                                    >
+                                      <Trash2 size={14}/>
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             ))}
-                            <div className="tr"><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td right" style={{ fontWeight: 300 }}>Subtotal</div><div className="td right" style={{ fontWeight: 300 }}>{formatCurrency(subtotal)}</div></div>
-                            <div className="tr"><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td right" style={{ fontWeight: 800, color: '#111827' }}>Total</div><div className="td right" style={{ fontWeight: 800, color: '#111827' }}>{formatCurrency(p.total)}</div></div>
+                            <div className="tr">
+                              <div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td right" style={{ fontWeight: 300 }}>Subtotal</div><div className="td right" style={{ fontWeight: 300 }}>{formatCurrency(subtotal)}</div>{canEditItems(p) && <div className="td" />}
+                            </div>
+                            <div className="tr">
+                              <div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td" /><div className="td right" style={{ fontWeight: 800, color: '#111827' }}>Total</div><div className="td right" style={{ fontWeight: 800, color: '#111827' }}>{formatCurrency(p.total)}</div>{canEditItems(p) && <div className="td" />}
+                            </div>
                           </div>
                         </div>
                       )}
 
-                      <div className="notes">
+                      {/* Bloco: adicionar serviços quando DECLINED */}
+                      {canEditItems(p) && (
+                        <div className="eligible-box" style={{ marginTop: 14 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, flexWrap:'wrap' }}>
+                            <h4 style={{ margin:0, fontSize:14, fontWeight:600 }}>Add services to this payment</h4>
+                            <button
+                              className="btn btn--outline btn--sm"
+                              onClick={() => loadEligibleFor(p)}
+                              disabled={eligibleLoading[p.id]}
+                              title="Reload eligible services (not in any payment)"
+                            >
+                              {eligibleLoading[p.id] ? <Loader size={14} className="animate-spin" /> : <PlusCircle size={14} />}
+                              Reload list
+                            </button>
+                            <span className="muted" style={{ fontSize:12 }}>
+                              Period: {renderWeekRange(p)} • Partner: {p.partnerName}
+                            </span>
+                          </div>
+
+                          <div className="table table--selection" style={{ border:'1px dashed #e5e7eb' }}>
+                            <div className="thead">
+                              <div className="th center">#</div>
+                              <div className="th">Date</div>
+                              <div className="th">Client</div>
+                              <div className="th">Service</div>
+                              <div className="th right">Amount</div>
+                            </div>
+                            <div className="tbody">
+                              {(eligibleMap[p.id] || []).length === 0 ? (
+                                <div className="empty-row">No eligible services for this period.</div>
+                              ) : (
+                                (eligibleMap[p.id] || []).map(s => {
+                                  const checked = (eligibleSel[p.id] || new Set()).has(s.id);
+                                  const svcName =
+                                    serviceTypes.find(t => t.id === (s.serviceTypeId ?? s.serviceType))?.name ||
+                                    s?.serviceType?.name ||
+                                    s.serviceTypeId || '—';
+                                  return (
+                                    <div key={s.id} className="tr">
+                                      <div className="td center">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => toggleEligSel(p.id, s.id)}
+                                        />
+                                      </div>
+                                      <div className="td">{s.serviceDate ? new Date(s.serviceDate).toLocaleDateString() : '—'}</div>
+                                      <div className="td">{`${s.firstName || ''} ${s.lastName || ''}`.trim() || '—'}</div>
+                                      <div className="td">{svcName}</div>
+                                      <div className="td right">{formatCurrency(s.finalValue)}</div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ display:'flex', justifyContent:'flex-end', marginTop:8, gap:8 }}>
+                            <button
+                              className="btn btn--outline btn--sm"
+                              onClick={() => clearEligSel(p.id)}
+                              disabled={!(eligibleSel[p.id] && eligibleSel[p.id].size)}
+                            >
+                              Clear selection
+                            </button>
+                            <button
+                              className="btn btn--primary btn--sm"
+                              onClick={() => addSelectedToPayment(p)}
+                              disabled={eligibleLoading[p.id] || !(eligibleSel[p.id] && eligibleSel[p.id].size)}
+                              title="Add selected services to this payment"
+                            >
+                              {eligibleLoading[p.id] ? <Loader size={14} className="animate-spin" /> : <PlusCircle size={14}/>}
+                              Add selected
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="notes" style={{ marginTop: 14 }}>
                         <label>Notes</label>
                         <textarea
                           value={noteDrafts[p.id] ?? ''}
@@ -940,7 +1098,11 @@ const Payments = () => {
               <div className="edit-head"><Info size={16}/><span>Edit payment notes • {pay.partnerName} • {pay.weekKey || renderWeekRange(pay)}</span></div>
               <textarea
                 value={pay.notes || ''}
-                onChange={(e) => setPayments(prev => prev.map(p => (p.id === pay.id) ? { ...p, notes: e.target.value } : p))}
+                onChange={(e) =>
+                  setPayments(prev =>
+                    prev.map(p => (p.id === pay.id) ? { ...p, notes: e.target.value } : p)
+                  )
+                }
                 rows={3}
                 placeholder="Add internal notes about this payment..."
               />
