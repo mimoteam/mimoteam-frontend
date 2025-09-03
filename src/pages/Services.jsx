@@ -1,3 +1,5 @@
+// src/pages/Services.jsx (Parte 1/8) — imports, helpers, wrappers, persistência e estados-base
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Settings, DollarSign, ShoppingCart, User, Calendar, Clock, Users, MapPin, Plus,
@@ -18,6 +20,58 @@ import {
 } from '../api/services';
 import { fetchUsers as fetchUsersApi } from '../api/users';
 
+/** =========================
+ * Helpers gerais
+ * ========================= */
+
+// Evita off-by-one: força horário local 00:00:00 ao construir Date
+const toLocalDate = (dateStr) => {
+  if (!dateStr) return null;
+  const src = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`;
+  const d = new Date(src);
+  return isNaN(d.getTime()) ? null : d;
+};
+const formatDateSafe = (dateStr, opts = { month: '2-digit', day: '2-digit', year: 'numeric' }, locale = 'en-US') => {
+  const d = toLocalDate(dateStr);
+  return d ? d.toLocaleDateString(locale, opts) : '—';
+};
+const formatWeekday = (dateStr, locale = 'en-US') => {
+  const d = toLocalDate(dateStr);
+  return d ? d.toLocaleDateString(locale, { weekday: 'short' }) : '—';
+};
+
+const toNoonUTCISO = (ymd) => {
+  if (!ymd) return undefined;
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0, 0)).toISOString(); // 12:00Z
+};
+const startOfDayUTCISO = (ymd) => {
+  if (!ymd) return undefined;
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0)).toISOString(); // 00:00Z
+};
+const endOfDayUTCISO = (ymd) => {
+  if (!ymd) return undefined;
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999)).toISOString(); // 23:59:59.999Z
+};
+
+// Semana de pagamento: Quarta (3) → Terça
+const getPaymentWeek = (date = new Date()) => {
+  const now = new Date(date);
+  const dow = now.getDay(); // 0=Dom .. 3=Qua
+  const daysToSubtract = dow >= 3 ? (dow - 3) : (dow + 4);
+  const start = new Date(now); start.setDate(now.getDate() - daysToSubtract); start.setHours(0,0,0,0);
+  const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
+  return { start, end };
+};
+const getWeekNumber = (date) => {
+  const d = new Date(date);
+  const firstDayOfYear = new Date(d.getFullYear(), 0, 1);
+  const pastDaysOfYear = Math.floor((d.getTime() - firstDayOfYear.getTime()) / 86400000);
+  return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+};
+
 // ===== Helpers (pagamentos em localStorage para “vínculo” visual) =====
 const PAYMENTS_KEYS = ['payments_v1', 'payments', 'generated_payments'];
 const safeParse = (raw, fb = []) => { try { const v = JSON.parse(raw); return Array.isArray(v) ? v : fb; } catch { return fb; } };
@@ -28,26 +82,39 @@ const asIcon = (MaybeIcon) => (typeof MaybeIcon === 'function' ? MaybeIcon : Set
 
 // === Wrappers presos ao backend (sem fallbacks para /api do frontend) ===
 async function fetchServicesCompat(params) {
-  const { page, pageSize, sortField, sortDirection, filters = {}, search } = params || {};
+  const { page, pageSize, sortField, sortDirection, filters = {} } = params || {};
+  // Mapeamento CONSERVADOR p/ API (sem q/search)
   return await fetchServices({
     page,
     pageSize,
     sortBy: sortField || 'serviceDate',
     sortDir: (sortDirection || 'desc').toLowerCase(),
-    q: search || undefined,
-    ...filters, // dateFrom, dateTo, partner, serviceType, team, status
+    // ✅ nomes que o backend espera + datas como UTC “início/fim do dia”
+    partner:     filters.partner     || undefined,
+    serviceType: filters.serviceType || undefined,
+    status:      filters.status      || undefined,
+    team:        filters.team        || undefined,
+    dateFrom:    filters.dateFrom ? startOfDayUTCISO(filters.dateFrom) : undefined,
+    dateTo:      filters.dateTo   ? endOfDayUTCISO(filters.dateTo)     : undefined,
   });
 }
-async function createServicesBulkCompat(payloads) {
-  // controller aceita array direto ou {items:[]}; enviaremos array direto
-  return await createServicesBulk(payloads);
-}
-async function updateServiceCompat(id, body) {
-  return await updateService(id, body); // PATCH/PUT abstraído no api/services
-}
-async function deleteServiceCompat(id) {
-  return await deleteService(id);
-}
+async function createServicesBulkCompat(payloads) { return await createServicesBulk(payloads); }
+async function updateServiceCompat(id, body) { return await updateService(id, body); }
+async function deleteServiceCompat(id) { return await deleteService(id); }
+
+// Persistência leve de estado da tela (para sobreviver a refresh/voltar)
+const UI_STATE_KEY = 'services_ui_state_v3'; // v3: sem searchTerm
+
+// Util: estado -> storage
+const saveUiState = (state) => {
+  try { localStorage.setItem(UI_STATE_KEY, JSON.stringify(state)); } catch {}
+};
+const loadUiState = () => {
+  try { const raw = localStorage.getItem(UI_STATE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+};
+
+// 🔁 Intervalo de atualização “ao vivo” (admins simultâneos)
+const LIVE_REFRESH_MS = 15000;
 
 const Services = () => {
   /* ===== ESTADOS DO FORM ===== */
@@ -64,7 +131,7 @@ const Services = () => {
     hopper: false,
     guests: '',
     observations: '',
-    serviceValue: '' // override manual
+    serviceValue: '' // valor final MANUAL obrigatório
   });
 
   /* ===== ESTADOS GERAIS ===== */
@@ -99,7 +166,6 @@ const Services = () => {
     team: '',
     status: '',
   });
-  const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('form'); // 'form' | 'list'
 
   // Parceiros ativos (via backend)
@@ -108,12 +174,21 @@ const Services = () => {
   // Pagamentos (para mostrar badge de vínculo)
   const [paymentsStore, setPaymentsStore] = useState([]);
 
+  // Seleção em massa (lista)
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const isSelected = (id) => selectedIds.has(id);
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Auto-refresh leve ao ganhar foco / visibilidade
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
   /* ===== REFS ===== */
   const cancelTokenRef = useRef(null);
   const requestIdRef = useRef(0);
   const firstNameRef = useRef(null);
   const serviceDateRef = useRef(null);
   const addToCartRef = useRef(() => {});
+  const updatesChannelRef = useRef(null); // BroadcastChannel para “avisar” outras abas
 
   /* ===== NOTIFICAÇÕES ===== */
   const [notifications, setNotifications] = useState([]);
@@ -158,17 +233,12 @@ const Services = () => {
     { id: 'BABYSITTER', name: 'Babysitter', icon: Baby, category: 'hourly', basePrice: 35, requiredFields: ['serviceTime'], optionalFields: ['team'], description: 'Childcare services' }
   ]), []);
 
-  /* ===== Localizações e PARQUES divididos em 2 grupos ===== */
+  /* ===== Localizações e PARQUES ===== */
   const locations = useMemo(() => (['Orlando','Califórnia']), []);
   const parksByLocation = useMemo(() => ({
-    Orlando: [
-      'Disney World','Universal Studios','Epic','SeaWorld','Busch Gardens','Legoland','Peppa Pig','Volcano Bay'
-    ],
-    'Califórnia': [
-      'Disneyland','Universal Hollywood','Six Flags'
-    ]
+    Orlando: ['Disney World','Universal Studios','Epic','SeaWorld','Busch Gardens','Legoland','Peppa Pig','Volcano Bay'],
+    'Califórnia': ['Disneyland','Universal Hollywood','Six Flags']
   }), []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const availableParks = formData.location ? (parksByLocation[formData.location] || []) : [];
 
   const serviceStatuses = useMemo(() => ([
@@ -178,689 +248,743 @@ const Services = () => {
     { id: 'PAID',     name: 'Paid',       color: '#10B981' }
   ]), []);
 
+  // ===== Atalhos =====
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+      const isTextarea = tag === 'textarea';
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); if (!isTextarea) addToCartRef.current(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); firstNameRef.current?.focus(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); serviceDateRef.current?.focus(); return; }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
-// ===== Atalhos =====
-useEffect(() => {
-  const onKeyDown = (e) => {
-    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
-    const isTextarea = tag === 'textarea';
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); if (!isTextarea) addToCartRef.current(); return; }
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); firstNameRef.current?.focus(); return; }
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); serviceDateRef.current?.focus(); return; }
-  };
-  window.addEventListener('keydown', onKeyDown);
-  return () => window.removeEventListener('keydown', onKeyDown);
-}, []);
-
-/* ===== Semana de pagamento ===== */
-useEffect(() => {
-  const calculatePaymentWeek = () => {
+  /* ===== Semana de pagamento (info UI) ===== */
+  useEffect(() => {
     const now = new Date();
-    const currentDay = now.getDay(); // 0=Dom, 3=Qua
-    let weekStart = new Date(now);
-    const daysToSubtract = currentDay >= 3 ? currentDay - 3 : currentDay + 4;
-    weekStart.setDate(now.getDate() - daysToSubtract);
-    weekStart.setHours(0,0,0,0);
-    let weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    weekEnd.setHours(23,59,59,999);
+    const w = getPaymentWeek(now);
     setCurrentWeek({
-      start: weekStart,
-      end: weekEnd,
-      year: weekStart.getFullYear(),
-      month: weekStart.getMonth() + 1,
-      weekNumber: getWeekNumber(weekStart)
+      start: w.start,
+      end: w.end,
+      year: w.start.getFullYear(),
+      month: w.start.getMonth() + 1,
+      weekNumber: getWeekNumber(w.start)
     });
-  };
-  calculatePaymentWeek();
-}, []);
-const getWeekNumber = (date) => {
-  const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
-  const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
-  return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
-};
+  }, []);
 
-/* ===== Carrega pagamentos (local) p/ badge de vínculo ===== */
-useEffect(() => { setPaymentsStore(loadFirstHit(PAYMENTS_KEYS)); }, []);
-useEffect(() => {
-  const onStorage = (e) => { if (e.key && PAYMENTS_KEYS.includes(e.key)) setPaymentsStore(loadFirstHit(PAYMENTS_KEYS)); };
-  window.addEventListener('storage', onStorage);
-  return () => window.removeEventListener('storage', onStorage);
-}, []);
+  /* ===== Carrega pagamentos (local) p/ badge de vínculo + auto refresh leve ===== */
+  useEffect(() => { setPaymentsStore(loadFirstHit(PAYMENTS_KEYS)); }, []);
+  useEffect(() => {
+    const onStorage = (e) => { if (e.key && PAYMENTS_KEYS.includes(e.key)) setPaymentsStore(loadFirstHit(PAYMENTS_KEYS)); };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  useEffect(() => {
+    const onFocus = () => { if (autoRefresh) { setPaymentsStore(loadFirstHit(PAYMENTS_KEYS)); if (viewMode === 'list') loadServices(); } };
+    const onVis = () => { if (document.visibilityState === 'visible' && autoRefresh) { setPaymentsStore(loadFirstHit(PAYMENTS_KEYS)); if (viewMode === 'list') loadServices(); } };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVis); };
+  }, [autoRefresh, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-// Util p/ mapear serviço -> pagamento mais recente
-function extractServiceIds(payment) {
-  const out = new Set();
-  if (Array.isArray(payment.serviceIds)) payment.serviceIds.forEach(id => id && out.add(id));
-  if (Array.isArray(payment.services)) {
-    payment.services.forEach(s => { const id = (s && (s.id || s.serviceId)) || s; if (id) out.add(id); });
+  // Util p/ mapear serviço -> pagamento mais recente
+  function extractServiceIds(payment) {
+    const out = new Set();
+    if (Array.isArray(payment.serviceIds)) payment.serviceIds.forEach(id => id && out.add(id));
+    if (Array.isArray(payment.services)) {
+      payment.services.forEach(s => { const id = (s && (s.id || s.serviceId)) || s; if (id) out.add(id); });
+    }
+    if (Array.isArray(payment.items)) {
+      payment.items.forEach(it => { const id = it?.service?.id || it?.serviceId || it?.id; if (id) out.add(id); });
+    }
+    return Array.from(out);
   }
-  if (Array.isArray(payment.items)) {
-    payment.items.forEach(it => { const id = it?.service?.id || it?.serviceId || it?.id; if (id) out.add(id); });
-  }
-  return Array.from(out);
-}
-const paymentIndex = useMemo(() => {
-  const idx = new Map();
-  (paymentsStore || []).forEach(p => {
-    const ids = extractServiceIds(p);
-    const ts = new Date(p.updatedAt || p.createdAt || 0).getTime();
-    ids.forEach(id => {
-       const key = String(id);
-       const prev = idx.get(key);
-      if (!prev || ts >= prev.ts) {
-        idx.set(key, { paymentId: p.id || p.paymentId || null, status: (p.status || 'IN_PAYMENT'), weekKey: p.weekKey || null, ts });
-      }
+  const paymentIndex = useMemo(() => {
+    const idx = new Map();
+    (paymentsStore || []).forEach(p => {
+      const ids = extractServiceIds(p);
+      const ts = new Date(p.updatedAt || p.createdAt || 0).getTime();
+      ids.forEach(id => {
+        const key = String(id);
+        const prev = idx.get(key);
+        if (!prev || ts >= prev.ts) {
+          idx.set(key, { paymentId: p.id || p.paymentId || null, status: (p.status || 'IN_PAYMENT'), weekKey: p.weekKey || null, ts });
+        }
+      });
     });
-  });
-  return idx;
-}, [paymentsStore]);
+    return idx;
+  }, [paymentsStore]);
 
-/* ===== Carrega parceiros (backend) ===== */
-useEffect(() => {
-  (async () => {
-    try {
-      const res = await fetchUsersApi({ role: 'partner', status: 'active', page: 1, pageSize: 1000 });
-      const arr = Array.isArray(res.items) ? res.items : (Array.isArray(res.data) ? res.data : []);
-      const mapped = arr.map(u => ({
-        id: String(u._id || u.id),
-        name: u.fullName || u.login || '(no name)',
-        email: u.email || '',
-        role: u.role,
-        funcao: u.funcao || null,
-      }));
-      setActivePartners(mapped);
-    } catch {
+  /* ===== Carrega parceiros (backend) ===== */
+  useEffect(() => {
+    (async () => {
       try {
-        const raw = localStorage.getItem('users_store_v1');
-        const arr = raw ? JSON.parse(raw) : [];
-        const mapped = (Array.isArray(arr) ? arr : [])
-          .filter(u => (u.role?.toLowerCase() === 'partner') && ((u.status || 'active').toLowerCase() === 'active'))
-          .map(u => ({
-            id: String(u._id || u.id),
-            name: u.fullName || u.login || '(no name)',
-            email: u.email || '',
-            role: u.role,
-            funcao: u.funcao || null,
-          }));
+        const res = await fetchUsersApi({ role: 'partner', status: 'active', page: 1, pageSize: 1000 });
+        const arr = Array.isArray(res.items) ? res.items : (Array.isArray(res.data) ? res.data : []);
+        const mapped = arr.map(u => ({
+          id: String(u._id || u.id),
+          name: u.fullName || u.login || '(no name)',
+          email: u.email || '',
+          role: u.role,
+          funcao: u.funcao || null,
+        }));
         setActivePartners(mapped);
-      } catch { setActivePartners([]); }
-    }
-  })();
-}, []);
-
-/* ===== Normalização vinda do backend ===== */
-const normalizeFromApi = (it) => {
-  const serviceTypeId = it.serviceTypeId || it.serviceType?.id || it.serviceType || null;
-  const stHit = serviceTypes.find(s => s.id === serviceTypeId);
-
-  // suporta: string id, objeto com _id, objeto com id
-  const rawPartner = it.partner;
-  const partnerId =
-    it.partnerId ||
-    (rawPartner && (rawPartner._id || rawPartner.id)) ||
-    (typeof rawPartner === 'string' ? rawPartner : null);
-
-  const partnerHitDb = rawPartner && typeof rawPartner === 'object'
-    ? {
-        id: String(rawPartner._id || rawPartner.id),
-        name: rawPartner.fullName || rawPartner.login || '(no name)',
-        email: rawPartner.email || '',
-        role: rawPartner.role,
+      } catch {
+        try {
+          const raw = localStorage.getItem('users_store_v1');
+          const arr = raw ? JSON.parse(raw) : [];
+          const mapped = (Array.isArray(arr) ? arr : [])
+            .filter(u => (u.role?.toLowerCase() === 'partner') && ((u.status || 'active').toLowerCase() === 'active'))
+            .map(u => ({
+              id: String(u._id || u.id),
+              name: u.fullName || u.login || '(no name)',
+              email: u.email || '',
+              role: u.role,
+              funcao: u.funcao || null,
+            }));
+          setActivePartners(mapped);
+        } catch { setActivePartners([]); }
       }
-    : null;
+    })();
+  }, []);
 
-  const partnerHitList = activePartners.find(p => String(p.id) === String(partnerId));
-  const partnerNorm = partnerHitDb || partnerHitList || (partnerId
-    ? { id: String(partnerId), name: it.partnerName || '(partner)' }
-    : null);
+  // ✅ Parceiros SEMPRE em ordem alfabética (pt-BR, case-insensitive)
+  const sortedPartners = useMemo(() => {
+    const list = Array.isArray(activePartners) ? [...activePartners] : [];
+    return list.sort((a, b) => (a?.name || '').localeCompare(b?.name || '', 'pt-BR', { sensitivity: 'base' }));
+  }, [activePartners]);
 
-  const statusId = (typeof it.status === 'string' ? it.status : it.status?.id) || 'RECORDED';
-  const statusHit = serviceStatuses.find(s => s.id === statusId) || { id: 'RECORDED', name: 'Recorded', color: '#6B7280' };
+  // 🔔 Canal local p/ avisar outras abas/janelas da mesma origem
+  useEffect(() => {
+    try {
+      updatesChannelRef.current = new BroadcastChannel('mimo_services_updates');
+      const ch = updatesChannelRef.current;
+      ch.onmessage = (evt) => {
+        if (evt?.data === 'changed' && viewMode === 'list') {
+          loadServices();
+        }
+      };
+      return () => ch.close();
+    } catch { /* sem suporte */ }
+  }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return {
-    id: String(it._id || it.id),
-    serviceDate: it.serviceDate,
-    firstName: it.firstName,
-    lastName: it.lastName,
-    partner: partnerNorm,
-    team: it.team || '',
-    serviceType: stHit
-      ? { id: stHit.id, name: stHit.name, icon: stHit.icon, category: stHit.category }
-      : { id: serviceTypeId, name: it.serviceTypeName || (serviceTypeId || 'Unknown'), icon: Settings, category: it.category || 'fixed' },
-    serviceTime: it.serviceTime ?? '',
-    park: it.park || '',
-    location: it.location || '',
-    hopper: !!it.hopper,
-    guests: it.guests ?? '',
-    observations: it.observations || '',
-    finalValue: Number(it.finalValue ?? it.value ?? 0),
-    overrideValue: it.overrideValue ?? null,
-    calculatedPrice: it.calculatedPrice || null,
-    status: statusHit,
-    createdAt: it.createdAt || new Date().toISOString(),
+  const notifyGlobalChange = () => {
+    try { updatesChannelRef.current?.postMessage('changed'); } catch {}
   };
-};
 
-/* ===== PRICE ===== */
-const canCalculate = (data) => {
-  if (!data?.serviceType || !data?.partner) return false;
-  const st = serviceTypes.find(s => s.id === data.serviceType);
-  if (!st) return false;
-  if (st.category === 'variable') return !!(data.team && data.park && data.location && data.guests !== '' && data.guests !== null);
-  if (st.category === 'hourly')   return !!(data.serviceTime && parseInt(data.serviceTime) > 0);
-  return true;
-};
+  /* ===== Normalização vinda do backend ===== */
+  const normalizeFromApi = (it) => {
+    const serviceTypeId = it.serviceTypeId || it.serviceType?.id || it.serviceType || null;
+    const stHit = serviceTypes.find(s => s.id === serviceTypeId);
 
-const validatePriceParams = (data) => {
-  if (!data.serviceType || !data.partner) return { valid: false, reason: 'Missing service type or partner' };
-  const serviceType = serviceTypes.find(s => s.id === data.serviceType);
-  if (!serviceType) return { valid: false, reason: 'Invalid service type' };
-  switch (serviceType.category) {
-    case 'variable':
-      if (!data.team || !data.park || !data.location || data.guests === null || data.guests === '') {
-        return { valid: false, reason: 'Missing required fields for variable service' };
-      }
-      break;
-    case 'hourly':
-      if (!data.serviceTime || parseInt(data.serviceTime) < 1) {
-        return { valid: false, reason: 'Invalid service time for hourly service' };
-      }
-      break;
-    default: break;
-  }
-  return { valid: true };
-};
+    // suporta: string id, objeto com _id, objeto com id
+    const rawPartner = it.partner;
+    const partnerId =
+      it.partnerId ||
+      (rawPartner && (rawPartner._id || rawPartner.id)) ||
+      (typeof rawPartner === 'string' ? rawPartner : null);
 
-const calculateServicePrice = useCallback(async (data) => {
-  if (cancelTokenRef.current) cancelTokenRef.current.cancelled = true;
+    const partnerHitDb = rawPartner && typeof rawPartner === 'object'
+      ? {
+          id: String(rawPartner._id || rawPartner.id),
+          name: rawPartner.fullName || rawPartner.login || '(no name)',
+          email: rawPartner.email || '',
+          role: rawPartner.role,
+        }
+      : null;
 
-  const validation = validatePriceParams(data);
-  if (!validation.valid) { setPriceState({ status: 'idle', data: null, error: null, requestId: null }); return; }
+    const partnerHitList = sortedPartners.find(p => String(p.id) === String(partnerId));
+    const partnerNorm = partnerHitDb || partnerHitList || (partnerId
+      ? { id: String(partnerId), name: it.partnerName || '(partner)' }
+      : null);
 
-  const requestId = ++requestIdRef.current;
-  const cancelToken = { cancelled: false };
-  cancelTokenRef.current = cancelToken;
-  setPriceState({ status: 'loading', data: null, error: null, requestId });
+    const statusId = (typeof it.status === 'string' ? it.status : it.status?.id) || 'RECORDED';
+    const statusHit = serviceStatuses.find(s => s.id === statusId) || { id: 'RECORDED', name: 'Recorded', color: '#6B7280' };
 
-  try {
-    await new Promise(r => setTimeout(r, 250)); // simula latência
-    if (cancelToken.cancelled) return;
+    return {
+      id: String(it._id || it.id),
+      serviceDate: it.serviceDate,
+      firstName: it.firstName,
+      lastName: it.lastName,
+      partner: partnerNorm,
+      team: it.team || '',
+      serviceType: stHit
+        ? { id: stHit.id, name: stHit.name, icon: stHit.icon, category: stHit.category }
+        : { id: serviceTypeId, name: it.serviceTypeName || (serviceTypeId || 'Unknown'), icon: Settings, category: it.category || 'fixed' },
+      serviceTime: it.serviceTime ?? '',
+      park: it.park || '',
+      location: it.location || '',
+      hopper: !!it.hopper,
+      guests: it.guests ?? '',
+      observations: it.observations || '',
+      finalValue: Number(it.finalValue ?? it.value ?? 0),
+      overrideValue: it.overrideValue ?? null,
+      calculatedPrice: it.calculatedPrice || null,
+      status: statusHit, // ✅ status sempre do backend
+      createdAt: it.createdAt || new Date().toISOString(),
+    };
+  };
 
+  /* ===== PRICE ===== */
+  const canCalculate = (data) => {
+    if (!data?.serviceType || !data?.partner) return false;
+    const st = serviceTypes.find(s => s.id === data.serviceType);
+    if (!st) return false;
+    if (st.category === 'variable') return !!(data.team && data.park && data.location && data.guests !== '' && data.guests !== null);
+    if (st.category === 'hourly')   return !!(data.serviceTime && parseInt(data.serviceTime) > 0);
+    return true;
+  };
+
+  const validatePriceParams = (data) => {
+    if (!data.serviceType || !data.partner) return { valid: false, reason: 'Missing service type or partner' };
     const serviceType = serviceTypes.find(s => s.id === data.serviceType);
-    if (!serviceType) throw new Error('Service type not found');
-
-    let price;
-    const breakdown = { basePrice: 0, adjustments: [], finalPrice: 0 };
-
-    // 1) tenta custos cadastrados
-    const hit = lookupCost(data);
-
-    if (hit && typeof hit.amount === 'number') {
-      price = hit.amount;
-      breakdown.basePrice = hit.amount;
-
-      if (serviceType.category === 'hourly') {
-        const hours = parseInt(data.serviceTime) || 1;
-        const keyHasHours = hit.keyFields?.includes?.('hours');
-        if (!keyHasHours && hours > 1) {
-          price *= hours;
-          breakdown.adjustments.push({ type: 'hours', description: `${hours} hours`, multiplier: hours });
+    if (!serviceType) return { valid: false, reason: 'Invalid service type' };
+    switch (serviceType.category) {
+      case 'variable':
+        if (!data.team || !data.park || !data.location || data.guests === null || data.guests === '') {
+          return { valid: false, reason: 'Missing required fields for variable service' };
         }
-        if (hours > 4) {
-          price *= 0.9;
-          breakdown.adjustments.push({ type: 'bulk_discount', description: '4+ hours discount', multiplier: 0.9 });
+        break;
+      case 'hourly':
+        if (!data.serviceTime || parseInt(data.serviceTime) < 1) {
+          return { valid: false, reason: 'Invalid service time for hourly service' };
         }
-      }
+        break;
+      default: break;
+    }
+    return { valid: true };
+  };
 
-      if (serviceType.category === 'variable') {
-        const keyHasHopper = hit.keyFields?.includes?.('hopper');
-        if (!keyHasHopper && data.hopper) {
-          price *= 2; // Park Hopper dobra
-          breakdown.adjustments.push({ type: 'hopper', description: 'Park hopper (x2)', multiplier: 2 });
-        }
-      }
-    } else {
-      // 2) fallback – lógica original
-      price = serviceType.basePrice;
-      breakdown.basePrice = serviceType.basePrice;
+  const calculateServicePrice = useCallback(async (data) => {
+    if (cancelTokenRef.current) cancelTokenRef.current.cancelled = true;
 
-      switch (serviceType.category) {
-        case 'variable': {
-          const guests = parseInt(data.guests) || 1;
-          if (guests > 1) {
-            const guestMultiplier = Math.max(1, guests * 0.8);
-            price *= guestMultiplier;
-            breakdown.adjustments.push({ type: 'guests', description: `${guests} guests`, multiplier: guestMultiplier });
-          }
-          if (data.park && (data.park.includes('Universal') || data.park.includes('Epic'))) {
-            price *= 1.2;
-            breakdown.adjustments.push({ type: 'premium_park', description: 'Premium park surcharge', multiplier: 1.2 });
-          }
-          if (data.hopper) {
-            price *= 2;
-            breakdown.adjustments.push({ type: 'hopper', description: 'Park hopper (x2)', multiplier: 2 });
-          }
-          if (data.location === 'Califórnia') {
-            price *= 1.15;
-            breakdown.adjustments.push({ type: 'location', description: 'California location', multiplier: 1.15 });
-          }
-          if (data.team === 'US') {
-            price *= 1.1;
-            breakdown.adjustments.push({ type: 'team', description: 'US Team premium', multiplier: 1.1 });
-          }
-          break;
-        }
-        case 'hourly': {
+    const validation = validatePriceParams(data);
+    if (!validation.valid) { setPriceState({ status: 'idle', data: null, error: null, requestId: null }); return; }
+
+    const requestId = ++requestIdRef.current;
+    const cancelToken = { cancelled: false };
+    cancelTokenRef.current = cancelToken;
+    setPriceState({ status: 'loading', data: null, error: null, requestId });
+
+    try {
+      await new Promise(r => setTimeout(r, 250)); // simula latência
+      if (cancelToken.cancelled) return;
+
+      const serviceType = serviceTypes.find(s => s.id === data.serviceType);
+      if (!serviceType) throw new Error('Service type not found');
+
+      let price;
+
+      // 1) tenta custos cadastrados
+      const hit = (typeof lookupCost === 'function') ? lookupCost(data) : null;
+
+      if (hit && typeof hit.amount === 'number') {
+        price = hit.amount;
+
+        if (serviceType.category === 'hourly') {
           const hours = parseInt(data.serviceTime) || 1;
-          price *= hours;
-          breakdown.adjustments.push({ type: 'hours', description: `${hours} hours`, multiplier: hours });
-          if (hours > 4) {
-            price *= 0.9;
-            breakdown.adjustments.push({ type: 'bulk_discount', description: '4+ hours discount', multiplier: 0.9 });
-          }
-          if (data.team === 'US') {
-            price *= 1.1;
-            breakdown.adjustments.push({ type: 'team', description: 'US Team premium', multiplier: 1.1 });
-          }
-          break;
+          const keyHasHours = hit.keyFields?.includes?.('hours');
+          if (!keyHasHours && hours > 1) price *= hours;
+          if (hours > 4) price *= 0.9; // desconto volume
         }
-        case 'fixed':
-        default:
-          break;
+
+        if (serviceType.category === 'variable') {
+          const keyHasHopper = hit.keyFields?.includes?.('hopper');
+          if (!keyHasHopper && data.hopper) price *= 2; // hopper dobra
+        }
+      } else {
+        // 2) fallback – lógica original
+        price = serviceType.basePrice;
+
+        switch (serviceType.category) {
+          case 'variable': {
+            const guests = parseInt(data.guests) || 1;
+            if (guests > 1) price *= Math.max(1, guests * 0.8);
+            if (data.park && (data.park.includes('Universal') || data.park.includes('Epic'))) price *= 1.2;
+            if (data.hopper) price *= 2;
+            if (data.location === 'Califórnia') price *= 1.15;
+            if (data.team === 'US') price *= 1.1;
+            break;
+          }
+          case 'hourly': {
+            const hours = parseInt(data.serviceTime) || 1;
+            price *= hours;
+            if (hours > 4) price *= 0.9;
+            if (data.team === 'US') price *= 1.1;
+            break;
+          }
+          case 'fixed':
+          default:
+            break;
+        }
+      }
+
+      price = Math.round(price * 100) / 100;
+
+      if (cancelToken.cancelled) return;
+      if (requestId === requestIdRef.current) {
+        setPriceState({
+          status: 'success',
+          data: { amount: price, ruleId: `RULE_${serviceType.category.toUpperCase()}_${Date.now()}` }, // sem breakdown
+          error: null,
+          requestId
+        });
+      }
+    } catch (err) {
+      if (!cancelToken.cancelled && requestId === requestIdRef.current) {
+        setPriceState({ status: 'error', data: null, error: err.message || 'Failed to calculate price', requestId });
+      }
+    }
+  }, [serviceTypes, lookupCost]);
+
+  // debounce helper
+  function debounce(fn, wait) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+  }
+  const debouncedCalculatePrice = useCallback(debounce(calculateServicePrice, 350), [calculateServicePrice]);
+
+  const handleRecalculate = () => { calculateServicePrice(formData); };
+  const handleUseSuggested = () => {
+    if (priceState.status === 'success' && priceState.data) {
+      setFormData(prev => ({ ...prev, serviceValue: priceState.data.amount.toString() }));
+    }
+  };
+
+  /* ===== VALIDAÇÃO FORM ===== */
+  const validateForm = () => {
+    const newErrors = {};
+    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
+    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
+    if (!formData.serviceDate) newErrors.serviceDate = 'Service date is required';
+    if (!formData.partner) newErrors.partner = 'Partner is required';
+    if (!formData.serviceType) newErrors.serviceType = 'Service type is required';
+
+    const selectedServiceType = serviceTypes.find(s => s.id === formData.serviceType);
+    if (selectedServiceType) {
+      selectedServiceType.requiredFields?.forEach(field => {
+        const v = formData[field];
+        const isMissing =
+          v === undefined || v === null ||
+          (typeof v === 'string' && v.trim() === '') ||
+          (Array.isArray(v) && v.length === 0);
+        if (isMissing) {
+          const names = { team:'Team', park:'Park', location:'Location', guests:'Number of guests', serviceTime:'Service time', hopper:'Park hopper option' };
+          newErrors[field] = `${names[field] || field} is required`;
+        }
+      });
+
+      if (selectedServiceType.category === 'variable' && !formData.team) {
+        newErrors.team = 'Team is required for variable price services';
       }
     }
 
-    price = Math.round(price * 100) / 100;
-    breakdown.finalPrice = price;
+    // Valor MANUAL obrigatório
+    if (!formData.serviceValue || isNaN(formData.serviceValue) || parseFloat(formData.serviceValue) <= 0) {
+      newErrors.serviceValue = 'Service value is required and must be a positive number';
+    }
 
-    if (cancelToken.cancelled) return;
-    if (requestId === requestIdRef.current) {
-      setPriceState({
-        status: 'success',
-        data: { amount: price, breakdown, ruleId: `RULE_${serviceType.category.toUpperCase()}_${Date.now()}` },
-        error: null,
-        requestId
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  /* ===== INPUT CHANGE ===== */
+  const handleInputChange = (field, value) => {
+    setFormData(prev => {
+      const next = { ...prev, [field]: value };
+      if (errors[field]) setErrors(e => ({ ...e, [field]: undefined }));
+
+      if (field === 'serviceType' && value) {
+        const st = serviceTypes.find(s => s.id === value);
+        if (st?.category === 'variable') {
+          setTimeout(() => {
+            const teamSelect = document.querySelector('select[data-field="team"]');
+            teamSelect?.focus();
+          }, 100);
+        }
+      }
+
+      const priceFields = new Set(['serviceType','partner','team','park','location','guests','serviceTime','hopper']);
+      if (priceFields.has(field)) {
+        if (canCalculate(next)) debouncedCalculatePrice(next);
+        else setPriceState(ps => ({ ...ps, status: 'idle', data: null, error: null }));
+      }
+
+      if (field === 'location') {
+        const parksHere = parksByLocation[value] || [];
+        if (next.park && !parksHere.includes(next.park)) next.park = '';
+      }
+
+      return next;
+    });
+  };
+
+  // dispara cálculo quando possível; zera se não der
+  useEffect(() => {
+    if (canCalculate(formData)) debouncedCalculatePrice(formData);
+    else {
+      setPriceState(prev => {
+        if (prev.status === 'idle' && prev.data == null && prev.error == null) return prev;
+        return { status:'idle', data:null, error:null, requestId: prev?.requestId ?? null };
       });
     }
-  } catch (err) {
-    if (!cancelToken.cancelled && requestId === requestIdRef.current) {
-      setPriceState({ status: 'error', data: null, error: err.message || 'Failed to calculate price', requestId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData]);
+
+  /* ===== CARRINHO ===== */
+  function resetForm(mode = 'soft') {
+    if (mode === 'hard') {
+      setFormData({
+        firstName: '', lastName: '', serviceDate: '', partner: '', team: '',
+        serviceType: '', serviceTime: '', park: '', location: '', hopper: false,
+        guests: '', observations: '', serviceValue: ''
+      });
+    } else {
+      setFormData(prev => ({
+        firstName: prev.firstName, lastName: prev.lastName,
+        serviceDate: '', partner: '', team: '',
+        serviceType: '', serviceTime: '', park: '', location: '',
+        hopper: false, guests: '', observations: '', serviceValue: ''
+      }));
     }
-  }
-}, [serviceTypes, lookupCost]);
-
-// debounce helper
-function debounce(fn, wait) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
-}
-const debouncedCalculatePrice = useCallback(debounce(calculateServicePrice, 350), [calculateServicePrice]);
-
-const handleRecalculate = () => { calculateServicePrice(formData); };
-const handleUseSuggested = () => {
-  if (priceState.status === 'success' && priceState.data) {
-    setFormData(prev => ({ ...prev, serviceValue: priceState.data.amount.toString() }));
-  }
-};
-
-/* ===== VALIDAÇÃO FORM ===== */
-const validateForm = () => {
-  const newErrors = {};
-  if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-  if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-  if (!formData.serviceDate) newErrors.serviceDate = 'Service date is required';
-  if (!formData.partner) newErrors.partner = 'Partner is required';
-  if (!formData.serviceType) newErrors.serviceType = 'Service type is required';
-
-  const selectedServiceType = serviceTypes.find(s => s.id === formData.serviceType);
-  if (selectedServiceType) {
-    selectedServiceType.requiredFields?.forEach(field => {
-      const v = formData[field];
-      const isMissing =
-        v === undefined || v === null ||
-        (typeof v === 'string' && v.trim() === '') ||
-        (Array.isArray(v) && v.length === 0);
-      if (isMissing) {
-        const names = { team:'Team', park:'Park', location:'Location', guests:'Number of guests', serviceTime:'Service time', hopper:'Park hopper option' };
-        newErrors[field] = `${names[field] || field} is required`;
-      }
-    });
-
-    if (selectedServiceType.category === 'variable' && !formData.team) {
-      newErrors.team = 'Team is required for variable price services';
-    }
+    setErrors({});
+    setEditingId(null);
+    setEditSource(null);
+    setPriceState({ status: 'idle', data: null, error: null, requestId: null });
   }
 
-  if (formData.serviceValue && (isNaN(formData.serviceValue) || parseFloat(formData.serviceValue) < 0)) {
-    newErrors.serviceValue = 'Service value must be a valid positive number';
-  }
-
-  setErrors(newErrors);
-  return Object.keys(newErrors).length === 0;
-};
-
-/* ===== INPUT CHANGE ===== */
-const handleInputChange = (field, value) => {
-  setFormData(prev => {
-    const next = { ...prev, [field]: value };
-    if (errors[field]) setErrors(e => ({ ...e, [field]: undefined }));
-
-    if (field === 'serviceType' && value) {
-      const st = serviceTypes.find(s => s.id === value);
-      if (st?.category === 'variable') {
-        setTimeout(() => {
-          const teamSelect = document.querySelector('select[data-field="team"]');
-          teamSelect?.focus();
-        }, 100);
-      }
-    }
-
-    const priceFields = new Set(['serviceType','partner','team','park','location','guests','serviceTime','hopper']);
-    if (priceFields.has(field)) {
-      if (canCalculate(next)) debouncedCalculatePrice(next);
-      else setPriceState(ps => ({ ...ps, status: 'idle', data: null, error: null }));
-    }
-
-    if (field === 'location') {
-      const parksHere = parksByLocation[value] || [];
-      if (next.park && !parksHere.includes(next.park)) next.park = '';
-    }
-
-    return next;
-  });
-};
-
-// dispara cálculo quando possível; zera se não der
-useEffect(() => {
-  if (canCalculate(formData)) debouncedCalculatePrice(formData);
-  else {
-    setPriceState(prev => {
-      if (prev.status === 'idle' && prev.data == null && prev.error == null) return prev;
-      return { status:'idle', data:null, error:null, requestId: prev?.requestId ?? null };
-    });
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [formData]);
-
-/* ===== CARRINHO ===== */
-function resetForm(mode = 'soft') {
-  if (mode === 'hard') {
-    setFormData({
-      firstName: '', lastName: '', serviceDate: '', partner: '', team: '',
-      serviceType: '', serviceTime: '', park: '', location: '', hopper: false,
-      guests: '', observations: '', serviceValue: ''
-    });
-  } else {
-    setFormData(prev => ({
-      firstName: prev.firstName, lastName: prev.lastName,
-      serviceDate: '', partner: '', team: '',
-      serviceType: '', serviceTime: '', park: '', location: '',
-      hopper: false, guests: '', observations: '', serviceValue: ''
-    }));
-  }
-  setErrors({});
-  setEditingId(null);
-  setEditSource(null);
-  setPriceState({ status: 'idle', data: null, error: null, requestId: null });
-}
-
-function addToCart() {
-  const ok = validateForm();
-  if (!ok) { addNotification('error', 'Please fix the form', 'Preencha os campos obrigatórios antes de adicionar.'); return; }
-
-  const manual = formData.serviceValue?.toString().trim();
-  const hasManual = manual && !isNaN(parseFloat(manual));
-  const hasSuggested = priceState.status === 'success' && priceState.data?.amount != null;
-  if (!hasManual && !hasSuggested) {
-    setErrors(prev => ({ ...prev, serviceValue: 'Enter a value or wait for the suggested price' }));
-    addNotification('error', 'Missing value', 'Enter service value or wait the auto calculation.');
-    return;
-  }
-
-  const finalValue = hasManual ? parseFloat(manual) : priceState.data.amount;
-
-  const serviceData = {
-    id: editingId || `service-${Date.now()}`,
-    firstName: formData.firstName,
-    lastName: formData.lastName,
-    client: `${formData.firstName} ${formData.lastName}`,
-    serviceDate: formData.serviceDate,
-    partner: activePartners.find(p => p.id === formData.partner) || { id: formData.partner, name: '(partner não encontrado)' },
-    team: formData.team || '',
-    serviceType: serviceTypes.find(s => s.id === formData.serviceType),
-    serviceTime: formData.serviceTime || '',
-    park: formData.park || '',
-    location: formData.location || '',
-    hopper: !!formData.hopper,
-    guests: formData.guests || '',
-    observations: formData.observations || '',
-    suggestedValue: finalValue,
-    calculatedPrice: priceState.data,
-    overrideValue: hasManual ? parseFloat(manual) : null,
-    createdAt: new Date().toISOString(),
-    paymentWeek: currentWeek
-  };
-
-  if (editingId) {
-    if (editSource === 'list') {
-      const payload = {
-        serviceDate: serviceData.serviceDate,
-        firstName: serviceData.firstName,
-        lastName: serviceData.lastName,
-        partnerId: serviceData.partner.id,
-        team: serviceData.team || null,
-        serviceTypeId: serviceData.serviceType.id,
-        serviceTime: serviceData.serviceTime ? Number(serviceData.serviceTime) : null,
-        park: serviceData.park || null,
-        location: serviceData.location || null,
-        hopper: !!serviceData.hopper,
-        guests: serviceData.guests ? Number(serviceData.guests) : null,
-        observations: serviceData.observations || null,
-        finalValue: serviceData.suggestedValue,
-        overrideValue: serviceData.overrideValue || null,
-        calculatedPrice: serviceData.calculatedPrice || null
-      };
-
-      (async () => {
-        try {
-          await updateServiceCompat(editingId, payload);
-          addNotification('success', 'Updated', 'Service updated successfully.');
-          setEditingId(null);
-          setEditSource(null);
-          resetForm('soft');
-          setViewMode('list');
-          await loadServices();
-        } catch (e) {
-          console.error(e);
-          addNotification('error', 'Update failed', 'Could not update service.');
-        }
-      })();
+  function addToCart() {
+    const ok = validateForm();
+    if (!ok) {
+      addNotification('error', 'Please fix the form', 'Preencha os campos obrigatórios antes de adicionar.');
       return;
     }
 
-    // edição vinda do CARRINHO
-    setCart(prev => prev.map(item => item.id === editingId ? serviceData : item));
-    setEditingId(null);
-    setEditSource(null);
-    addNotification('success', 'Updated', 'Service updated successfully.');
-  } else {
-    setCart(prev => [...prev, serviceData]);
-    addNotification('success', 'Added', 'Service added to cart.');
+    // Valor MANUAL obrigatório (não adicionamos automático)
+    const manual = formData.serviceValue?.toString().trim();
+    const finalValueNum = Number.parseFloat(manual);
+    if (!manual || Number.isNaN(finalValueNum) || finalValueNum <= 0) {
+      setErrors(prev => ({ ...prev, serviceValue: 'Enter a valid service value' }));
+      addNotification('error', 'Missing value', 'Enter the service value (manual).');
+      return;
+    }
+
+    const suggestedNum = (priceState.status === 'success' && priceState.data?.amount != null)
+      ? Number(priceState.data.amount)
+      : null;
+
+    const serviceData = {
+      id: editingId || `service-${Date.now()}`,
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      client: `${formData.firstName} ${formData.lastName}`,
+      serviceDate: formData.serviceDate, // YYYY-MM-DD string
+      partner: sortedPartners.find(p => p.id === formData.partner) || { id: formData.partner, name: '(partner not found)' },
+      team: formData.team || '',
+      serviceType: serviceTypes.find(s => s.id === formData.serviceType),
+      serviceTime: formData.serviceTime || '',
+      park: formData.park || '',
+      location: formData.location || '',
+      hopper: !!formData.hopper,
+      guests: formData.guests || '',
+      observations: formData.observations || '',
+      // preços
+      finalValue: finalValueNum,               // SEMPRE manual
+      suggestedValue: suggestedNum,            // apenas referência
+      calculatedPrice: priceState.data || null,
+      overrideValue: (suggestedNum != null && suggestedNum !== finalValueNum) ? finalValueNum : null,
+      createdAt: new Date().toISOString(),
+      paymentWeek: (() => {
+        const w = getPaymentWeek(toLocalDate(formData.serviceDate) || new Date());
+        return { start: w.start, end: w.end, weekNumber: getWeekNumber(w.start), year: w.start.getFullYear() };
+      })()
+    };
+
+    if (editingId) {
+      if (editSource === 'list') {
+        const payload = {
+          serviceDate: toNoonUTCISO(serviceData.serviceDate),
+          firstName: serviceData.firstName,
+          lastName: serviceData.lastName,
+          partnerId: serviceData.partner.id,
+          team: serviceData.team || null,
+          serviceTypeId: serviceData.serviceType.id,
+          serviceTime: serviceData.serviceTime ? Number(serviceData.serviceTime) : null,
+          park: serviceData.park || null,
+          location: serviceData.location || null,
+          hopper: !!serviceData.hopper,
+          guests: serviceData.guests ? Number(serviceData.guests) : null,
+          observations: serviceData.observations || null,
+          finalValue: Number(serviceData.finalValue), // manual
+          overrideValue: serviceData.overrideValue,   // se diferente do sugerido
+          calculatedPrice: serviceData.calculatedPrice || null,
+        };
+
+        (async () => {
+          try {
+            await updateServiceCompat(editingId, payload);
+            notifyGlobalChange();
+            addNotification('success', 'Updated', 'Service updated successfully.');
+            setEditingId(null);
+            setEditSource(null);
+            resetForm('soft');
+            setViewMode('list');
+            await loadServices();
+          } catch (e) {
+            console.error(e);
+            addNotification('error', 'Update failed', 'Could not update service.');
+          }
+        })();
+        return;
+      }
+
+      // edição vinda do CARRINHO
+      setCart(prev => prev.map(item => item.id === editingId ? serviceData : item));
+      setEditingId(null);
+      setEditSource(null);
+      addNotification('success', 'Updated', 'Service updated successfully.');
+    } else {
+      setCart(prev => [...prev, serviceData]);
+      addNotification('success', 'Added', 'Service added to cart.');
+    }
+
+    resetForm('soft'); // mantém cliente
   }
+  addToCartRef.current = addToCart;
 
-  resetForm('soft'); // mantém cliente
-}
-addToCartRef.current = addToCart;
-
-const editService = (service) => {
-  setFormData({
-    firstName: service.firstName,
-    lastName: service.lastName,
-    serviceDate: typeof service.serviceDate === 'string'
-    ? service.serviceDate.slice(0,10)
-    : new Date(service.serviceDate).toISOString().slice(0,10),
-    partner: service.partner?.id || '',
-    team: service.team || '',
-    serviceType: service.serviceType.id,
-    serviceTime: service.serviceTime || '',
-    park: service.park || '',
-    location: service.location || '',
-    hopper: service.hopper || false,
-    guests: service.guests || '',
-    observations: service.observations || '',
-    serviceValue: service.overrideValue ? service.overrideValue.toString() : ''
-  });
-  setEditingId(service.id);
-  setEditSource('cart');
-  debouncedCalculatePrice({ ...service, serviceType: service.serviceType.id, partner: service.partner?.id || '' });
-};
-
-const removeService = (serviceId) => setCart(prev => prev.filter(item => item.id !== serviceId));
-
-const handleListEdit = (service) => {
-  setEditingId(service.id);
-  setEditSource('list');
-  const next = {
-    firstName: service.firstName,
-    lastName: service.lastName,
-     serviceDate:
-     typeof service.serviceDate === 'string'
-    ? service.serviceDate.slice(0, 10)
-    : new Date(service.serviceDate).toISOString().slice(0, 10),
-     partner: service.partner?.id || '',
-    team: service.team || '',
-    serviceType: service.serviceType.id,
-    serviceTime: service.serviceTime || '',
-    park: service.park || '',
-    location: service.location || '',
-    hopper: !!service.hopper,
-    guests: service.guests || '',
-    observations: service.observations || '',
-    serviceValue: service.overrideValue ? String(service.overrideValue) : ''
+  const editService = (service) => {
+    setFormData({
+      firstName: service.firstName,
+      lastName: service.lastName,
+      serviceDate: typeof service.serviceDate === 'string'
+        ? service.serviceDate.slice(0,10)
+        : (toLocalDate(service.serviceDate)?.toISOString().slice(0,10) ?? ''),
+      partner: service.partner?.id || '',
+      team: service.team || '',
+      serviceType: service.serviceType.id,
+      serviceTime: service.serviceTime || '',
+      park: service.park || '',
+      location: service.location || '',
+      hopper: service.hopper || false,
+      guests: service.guests || '',
+      observations: service.observations || '',
+      serviceValue: (service.overrideValue ?? service.finalValue ?? '').toString()
+    });
+    setEditingId(service.id);
+    setEditSource('cart');
+    debouncedCalculatePrice({ ...service, serviceType: service.serviceType.id, partner: service.partner?.id || '' });
   };
-  setFormData(next);
-  setViewMode('form');
-  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-  debouncedCalculatePrice(next);
-};
 
-const handleListDelete = async (id) => {
-  if (!window.confirm('Are you sure you want to delete this service?')) return;
-  try {
-    await deleteServiceCompat(id);
-    addNotification('success', 'Deleted', 'Service removed.');
-    await loadServices();
-  } catch (e) {
-    console.error(e);
-    addNotification('error', 'Delete failed', 'Could not delete service.');
-  }
-};
+  const removeService = (serviceId) => setCart(prev => prev.filter(item => item.id !== serviceId));
 
-const getTotalValue = () => cart.reduce((total, s) => total + (Number(s.suggestedValue) || 0), 0);
-
-/* ===== SALVAR (cart -> backend) ===== */
-const saveAllServices = async () => {
-  if (cart.length === 0) { addNotification('error','No Services','No services to save'); return; }
-  try {
-    setLoading(true);
-    const payloads = cart.map(s => ({
-      serviceDate: s.serviceDate,
-      firstName: s.firstName,
-      lastName: s.lastName,
-      partnerId: s.partner.id,
-      team: s.team || null,
-      serviceTypeId: s.serviceType.id,
-      serviceTime: s.serviceTime ? Number(s.serviceTime) : undefined,
-      park: s.park || undefined,
-      location: s.location || undefined,
-      hopper: !!s.hopper,
-      guests: s.guests ? Number(s.guests) : undefined,
-      observations: s.observations || undefined,
-      finalValue: Number(s.suggestedValue),
-      overrideValue: s.overrideValue ?? undefined,
-      calculatedPrice: s.calculatedPrice ?? undefined,
-      status: 'RECORDED',
-    }));
-    await createServicesBulkCompat(payloads);
-
-    addNotification('success', 'Serviços salvos!', `Salvamos ${cart.length} serviço(s) com sucesso.`);
-    setCart([]);
-    setPriceState({ status: 'idle', data: null, error: null, requestId: null });
-    setFormData(prev => ({ ...prev, firstName: '', lastName: '' }));
-    setViewMode('list');
-    setCurrentPage(1);
-    await loadServices();
+  const handleListEdit = (service) => {
+    setEditingId(service.id);
+    setEditSource('list');
+    const next = {
+      firstName: service.firstName,
+      lastName: service.lastName,
+      serviceDate: typeof service.serviceDate === 'string'
+        ? service.serviceDate.slice(0, 10)
+        : (toLocalDate(service.serviceDate)?.toISOString().slice(0,10) ?? ''),
+      partner: service.partner?.id || '',
+      team: service.team || '',
+      serviceType: service.serviceType.id,
+      serviceTime: service.serviceTime || '',
+      park: service.park || '',
+      location: service.location || '',
+      hopper: !!service.hopper,
+      guests: service.guests || '',
+      observations: service.observations || '',
+      serviceValue: (service.overrideValue ?? service.finalValue ?? '').toString()
+    };
+    setFormData(next);
+    setViewMode('form');
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-  } catch (e) {
-    console.error(e);
-    addNotification('error','Save Failed','Error saving services. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
+    debouncedCalculatePrice(next);
+  };
 
-/* ===== LISTAGEM (backend) ===== */
-const loadServices = useCallback(
-  debounce(async () => {
-    setLoading(true);
+  const handleListDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this service?')) return;
     try {
-      const res = await fetchServicesCompat({
-        page: currentPage,
-        pageSize,
-        sortField,
-        sortDirection,
-        filters,
-        search: searchTerm,
-      });
-
-      const rawItems = Array.isArray(res.items) ? res.items : (Array.isArray(res.data) ? res.data : []);
-      const items = rawItems.map(normalizeFromApi);
-
-      const totalRecords = Number(res.total ?? res.totalRecords ?? res.count ?? items.length);
-      const totalPages = Number(res.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize)));
-      const page = Number(res.page ?? currentPage);
-
-      setServices({ data: items, totalPages, totalRecords, currentPage: page });
-      setTotalPages(totalPages);
-      setTotalRecords(totalRecords);
+      await deleteServiceCompat(id);
+      notifyGlobalChange();
+      addNotification('success', 'Deleted', 'Service removed.');
+      await loadServices();
+      setSelectedIds(prev => { const nx = new Set(prev); nx.delete(id); return nx; });
     } catch (e) {
       console.error(e);
-      setServices({ data: [], totalPages: 1, totalRecords: 0, currentPage: 1 });
-      setTotalPages(1);
-      setTotalRecords(0);
+      addNotification('error', 'Delete failed', 'Could not delete service.');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.size} selected service(s)?`)) return;
+    try {
+      setLoading(true);
+      // Executa em série de forma conservadora
+      for (const id of selectedIds) {
+        try { // falhas parciais não interrompem
+          // eslint-disable-next-line no-await-in-loop
+          await deleteServiceCompat(id);
+        } catch (e) { console.error('Failed to delete', id, e); }
+      }
+      notifyGlobalChange();
+      addNotification('success', 'Deleted', `Removed ${selectedIds.size} service(s).`);
+      clearSelection();
+      await loadServices();
+    } catch (e) {
+      console.error(e);
+      addNotification('error', 'Bulk delete failed', 'Could not delete some services.');
     } finally {
       setLoading(false);
     }
-  }, 200),
-  [currentPage, pageSize, sortField, sortDirection, filters, searchTerm, activePartners, serviceTypes, serviceStatuses]
-);
-useEffect(() => { if (viewMode === 'list') loadServices(); }, [viewMode, loadServices]);
-useEffect(() => { if (viewMode === 'list') loadServices(); },
-  [currentPage, pageSize, sortField, sortDirection, filters, searchTerm, viewMode, loadServices]);
+  };
 
-/* ===== Filtros e ordenação ===== */
-const handleSort = (field) => {
-  const apiField = field === 'client' ? 'firstName' : field;
-  if (sortField === apiField) setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-  else { setSortField(apiField); setSortDirection('asc'); }
-  setCurrentPage(1);
-};
-const renderSortIcon = (field) => {
- const apiField = field === 'client' ? 'firstName' : field;
- if (sortField !== apiField) return <ArrowUpDown size={14} className="sort-icon inactive" />;
-  return sortDirection === 'asc'
-    ? <ArrowUp size={14} className="sort-icon active" />
-    : <ArrowDown size={14} className="sort-icon active" />;
-};
+  const getTotalValue = () => cart.reduce((total, s) => total + (Number(s.finalValue) || 0), 0);
 
-const handleFilterChange = (field, value) => {
-  setFilters(prev => ({ ...prev, [field]: value }));
-  setCurrentPage(1);
-};
-// src/pages/Services.jsx (Parte 4/4)
+  /* ===== SALVAR (cart -> backend) ===== */
+  const saveAllServices = async () => {
+    if (cart.length === 0) { addNotification('error','No Services','No services to save'); return; }
+    try {
+      setLoading(true);
+      const payloads = cart.map(s => ({
+        serviceDate: toNoonUTCISO(s.serviceDate), // grava 12:00Z
+        firstName: s.firstName,
+        lastName: s.lastName,
+        partnerId: s.partner.id,
+        team: s.team || null,
+        serviceTypeId: s.serviceType.id,
+        serviceTime: s.serviceTime ? Number(s.serviceTime) : undefined,
+        park: s.park || undefined,
+        location: s.location || undefined,
+        hopper: !!s.hopper,
+        guests: s.guests ? Number(s.guests) : undefined,
+        observations: s.observations || undefined,
+        finalValue: Number(s.finalValue), // MANUAL
+        // Se houver cálculo e o manual difere do sugerido, manda overrideValue
+        overrideValue: (s.calculatedPrice?.amount != null && Number(s.finalValue) !== Number(s.calculatedPrice.amount))
+          ? Number(s.finalValue)
+          : undefined,
+        calculatedPrice: s.calculatedPrice ?? undefined,
+        status: 'RECORDED',
+      }));
+      await createServicesBulkCompat(payloads);
 
-/* ===== RENDER ===== */
+      notifyGlobalChange();
+      addNotification('success', 'Serviços salvos!', `Salvamos ${cart.length} serviço(s) com sucesso.`);
+      setCart([]);
+      setPriceState({ status: 'idle', data: null, error: null, requestId: null });
+      setFormData(prev => ({ ...prev, firstName: '', lastName: '' }));
+      setViewMode('list');
+      setCurrentPage(1);
+      await loadServices();
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+    } catch (e) {
+      console.error(e);
+      addNotification('error','Save Failed','Error saving services. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ===== LISTAGEM (backend) ===== */
+  // Debounced loader + persistência de estado da lista
+  const loadServices = useCallback(
+    debounce(async () => {
+      setLoading(true);
+      try {
+        const res = await fetchServicesCompat({
+          page: currentPage,
+          pageSize,
+          sortField,
+          sortDirection,
+          filters
+        });
+
+        const rawItems = Array.isArray(res.items) ? res.items : (Array.isArray(res.data) ? res.data : []);
+        const items = rawItems.map(normalizeFromApi);
+
+        const totalRecords = Number(res.total ?? res.totalRecords ?? res.count ?? items.length);
+        const totalPages = Number(res.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize)));
+        const page = Number(res.page ?? currentPage);
+
+        setServices({ data: items, totalPages, totalRecords, currentPage: page });
+        setTotalPages(totalPages);
+        setTotalRecords(totalRecords);
+
+        // Persistir estado da lista (sem searchTerm)
+        saveUiState({
+          viewMode,
+          currentPage: page,
+          pageSize,
+          sortField,
+          sortDirection,
+          filters
+        });
+      } catch (e) {
+        console.error(e);
+        setServices({ data: [], totalPages: 1, totalRecords: 0, currentPage: 1 });
+        setTotalPages(1);
+        setTotalRecords(0);
+      } finally {
+        setLoading(false);
+      }
+    }, 200),
+    [currentPage, pageSize, sortField, sortDirection, filters, sortedPartners, serviceTypes, viewMode]
+  );
+
+  // Restaura estado salvo ao montar
+  useEffect(() => {
+    const saved = loadUiState();
+    if (saved) {
+      setViewMode(saved.viewMode || 'form');
+      setCurrentPage(saved.currentPage || 1);
+      setPageSize(saved.pageSize || 20);
+      setSortField(saved.sortField || 'serviceDate');
+      setSortDirection(saved.sortDirection || 'desc');
+      setFilters(saved.filters || { dateFrom:'', dateTo:'', partner:'', serviceType:'', team:'', status:'' });
+    }
+  }, []);
+
+  // Carrega quando entra em LIST
+  useEffect(() => { if (viewMode === 'list') loadServices(); }, [viewMode, loadServices]);
+
+  // Recarrega quando paginação/sort/filtros mudam
+  useEffect(() => { if (viewMode === 'list') loadServices(); },
+    [currentPage, pageSize, sortField, sortDirection, filters, viewMode, loadServices]);
+
+  // 🔁 Polling leve para múltiplos admins (atualizações de status/itens)
+  useEffect(() => {
+    if (viewMode !== 'list' || !autoRefresh) return;
+    const id = setInterval(() => { loadServices(); }, LIVE_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [viewMode, autoRefresh, loadServices]);
+
+  /* ===== Filtros e ordenação ===== */
+  const handleSort = (field) => {
+    // Mapear para API
+    const apiField = field === 'client' ? 'firstName' : (field === 'partner' ? 'partnerName' : field);
+    if (sortField === apiField) setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    else { setSortField(apiField); setSortDirection('asc'); }
+    setCurrentPage(1);
+  };
+  const renderSortIcon = (field) => {
+    const apiField = field === 'client' ? 'firstName' : (field === 'partner' ? 'partnerName' : field);
+    if (sortField !== apiField) return <ArrowUpDown size={14} className="sort-icon inactive" />;
+    return sortDirection === 'asc'
+      ? <ArrowUp size={14} className="sort-icon active" />
+      : <ArrowDown size={14} className="sort-icon active" />;
+  };
+
+  const handleFilterChange = (field, value) => {
+    setFilters(prev => ({ ...prev, [field]: value }));
+    setCurrentPage(1);
+  };
+
+   /* ===== RENDER ===== */
 return (
   <div className="services-page">
     {/* HEADER */}
@@ -953,7 +1077,7 @@ return (
                   {errors.serviceDate && <div className="error-text">{errors.serviceDate}</div>}
                 </div>
 
-                {/* Partner */}
+                {/* Partner (ordenado alfabeticamente) */}
                 <div className="field">
                   <label className="form-label"><User size={16} /> Partner</label>
                   <select
@@ -962,7 +1086,9 @@ return (
                     onChange={(e) => handleInputChange('partner', e.target.value)}
                   >
                     <option value="">Select a partner</option>
-                    {activePartners.map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                    {[...activePartners]
+                      .sort((a,b) => a.name.localeCompare(b.name,'en',{sensitivity:'base'}))
+                      .map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
                   </select>
                   {errors.partner && <div className="error-text">{errors.partner}</div>}
                 </div>
@@ -1050,7 +1176,7 @@ return (
                     >
                       <option value="">Select a park</option>
                       {formData.location
-                        ? availableParks.map(pk => <option key={pk} value={pk}>{pk}</option>)
+                        ? (parksByLocation[formData.location] || []).map(pk => <option key={pk} value={pk}>{pk}</option>)
                         : (
                           <>
                             <optgroup label="Orlando">
@@ -1109,7 +1235,7 @@ return (
                 />
               </div>
 
-              {/* PRICE SECTION */}
+              {/* PRICE SECTION (sem breakdown) */}
               <div className="price-section">
                 <div className="price-display">
                   <div className="price-icon">
@@ -1123,16 +1249,13 @@ return (
                       {priceState.status === 'error' && <span className="price-error">Error calculating price</span>}
                       {priceState.status === 'idle' && <span className="price-idle">Select service details</span>}
                     </div>
-                    {formData.serviceValue && priceState.data && parseFloat(formData.serviceValue) !== priceState.data.amount && (
-                      <div className="price-override">Override: ${parseFloat(formData.serviceValue).toFixed(2)}</div>
-                    )}
                   </div>
                   <div className="price-actions">
                     <button type="button" className="recalculate-btn" onClick={handleRecalculate} disabled={priceState.status === 'loading'} title="Recalculate price">
                       <RefreshCw size={16} className={priceState.status === 'loading' ? 'spinning' : ''} />
                     </button>
                     {priceState.status === 'success' && priceState.data && (
-                      <button type="button" className="recalculate-btn" onClick={handleUseSuggested} title="Use suggested value">
+                      <button type="button" className="recalculate-btn" onClick={handleUseSuggested} title="Copy suggested to value">
                         <Copy size={16} />
                       </button>
                     )}
@@ -1141,7 +1264,7 @@ return (
 
                 <div className="form-group">
                   <label className="form-label">
-                    <DollarSign size={16} /> Service Value
+                    <DollarSign size={16} /> Service Value (required)
                     {priceState.status === 'success' && priceState.data && (
                       <span className="suggested-hint"> (Suggested: ${priceState.data.amount.toFixed(2)})</span>
                     )}
@@ -1156,22 +1279,8 @@ return (
                     onChange={(e) => handleInputChange('serviceValue', e.target.value)}
                   />
                   {errors.serviceValue && <div className="error-text">{errors.serviceValue}</div>}
-                  <div className="form-hint">Leave empty to use calculated value. Use suggested button to copy calculated value.</div>
+                  <div className="form-hint">We won’t add any value automatically. Use the copy button to fill with the suggestion.</div>
                 </div>
-
-                {priceState.status === 'success' && priceState.data?.breakdown && (
-                  <div className="price-breakdown">
-                    <div className="breakdown-header"><Calculator size={16} /> Price Breakdown</div>
-                    <div className="breakdown-item"><span>Base Price:</span><span>${priceState.data.breakdown.basePrice.toFixed(2)}</span></div>
-                    {priceState.data.breakdown.adjustments.map((adj, i) => (
-                      <div key={i} className="breakdown-item">
-                        <span>{adj.description}:</span>
-                        <span>{adj.multiplier ? `×${adj.multiplier}` : `+$${adj.amount}`}</span>
-                      </div>
-                    ))}
-                    <div className="breakdown-total"><span>Final Price:</span><span>${priceState.data.breakdown.finalPrice.toFixed(2)}</span></div>
-                  </div>
-                )}
 
                 {priceState.status === 'error' && (
                   <div className="price-error-details"><AlertCircle size={16} /><span>{priceState.error}</span></div>
@@ -1229,7 +1338,7 @@ return (
                               </div>
                               <div className="service-client">{service.client}</div>
                               <div className="service-date">
-                                {new Date(service.serviceDate).toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' })}
+                                {formatDateSafe(service.serviceDate)}
                               </div>
                             </div>
                           </div>
@@ -1253,8 +1362,10 @@ return (
                             </div>
                           </div>
                           <div className="col-value">
-                            <div className="service-value">${Number(service.suggestedValue).toFixed(2)}</div>
-                            {service.overrideValue && <div className="value-note">(custom)</div>}
+                            <div className="service-value">${Number(service.finalValue).toFixed(2)}</div>
+                            {service.suggestedValue != null && service.suggestedValue !== service.finalValue && (
+                              <div className="value-note">(suggested ${Number(service.suggestedValue).toFixed(2)})</div>
+                            )}
                           </div>
                           <div className="col-obs">
                             {service.observations ? (
@@ -1310,32 +1421,16 @@ return (
     ) : (
       /* ===== VIEW: LIST ===== */
       <div className="services-list-container">
-        {/* Filtros e Busca */}
+        {/* Filtros (sem busca) */}
         <div className="list-controls">
-          <div className="search-section">
-            <div className="search-input-wrapper">
-              <Search size={20} />
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search by client name..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              {searchTerm && (
-                <button className="clear-search-btn" onClick={() => setSearchTerm('')} title="Clear search">
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          </div>
-
           <div className="filters-section">
             <div className="filter-group">
               <label>Partner:</label>
               <select value={filters.partner} onChange={(e) => handleFilterChange('partner', e.target.value)} className="filter-select">
                 <option value="">All Partners</option>
-                {activePartners.map((partner) => (<option key={partner.id} value={partner.id}>{partner.name}</option>))}
+                {[...activePartners]
+                  .sort((a,b) => a.name.localeCompare(b.name,'en',{sensitivity:'base'}))
+                  .map((partner) => (<option key={partner.id} value={partner.id}>{partner.name}</option>))}
               </select>
             </div>
 
@@ -1382,9 +1477,33 @@ return (
 
             <button
               className="clear-filters-btn"
-              onClick={() => { setFilters({ partner: '', serviceType: '', status: '', team: '', dateFrom: '', dateTo: '' }); setSearchTerm(''); setCurrentPage(1); }}
+              onClick={() => { setFilters({ partner: '', serviceType: '', status: '', team: '', dateFrom: '', dateTo: '' }); setCurrentPage(1); clearSelection(); }}
             >
               <X size={16} /> Clear Filters
+            </button>
+          </div>
+        </div>
+
+        {/* Ações da lista */}
+        <div style={{ display:'flex', alignItems:'center', gap:8, justifyContent:'space-between', marginBottom:8 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <button className="btn btn--outline" onClick={() => loadServices()} title="Refresh list">
+              <RefreshCw size={16} /> Refresh
+            </button>
+            <label className="checkbox-label" style={{ marginLeft:12 }}>
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+              />
+              <div className="checkbox-custom"></div>
+              Auto refresh on focus
+            </label>
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <button className="btn btn--danger" disabled={selectedIds.size === 0} onClick={handleBulkDelete} title="Delete selected">
+              <Trash2 size={16} /> Delete selected ({selectedIds.size})
             </button>
           </div>
         </div>
@@ -1400,6 +1519,20 @@ return (
             <>
               <div className="services-table">
                 <div className="table-header">
+                  <div className="header-cell center" style={{ width: 38 }}>
+                    {/* Selecionar todos (página) */}
+                    <input
+                      type="checkbox"
+                      checked={services.data.length > 0 && services.data.every(s => selectedIds.has(s.id))}
+                      onChange={(e) => {
+                        const all = new Set(selectedIds);
+                        if (e.target.checked) services.data.forEach(s => all.add(s.id));
+                        else services.data.forEach(s => all.delete(s.id));
+                        setSelectedIds(all);
+                      }}
+                      title="Select all on page"
+                    />
+                  </div>
                   <div className="header-cell sortable" onClick={() => handleSort('serviceDate')}>
                     <Calendar size={16} /> Date {renderSortIcon('serviceDate')}
                   </div>
@@ -1414,6 +1547,8 @@ return (
                   </div>
                   <div className="header-cell"><Settings size={16} /> Service Type</div>
                   <div className="header-cell"><List size={16} /> Parameters</div>
+                  {/* Observations com tooltip e truncamento */}
+                  <div className="header-cell"><AlertCircle size={16} /> Observations</div>
                   <div className="header-cell sortable" onClick={() => handleSort('finalValue')}>
                     <DollarSign size={16} /> Value {renderSortIcon('finalValue')}
                   </div>
@@ -1424,13 +1559,26 @@ return (
                 <div className="table-body">
                   {services.data.map((service) => (
                     <div key={service.id} className="table-row">
+                      <div className="table-cell center" style={{ width: 38 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(service.id)}
+                          onChange={(e) => {
+                            const nx = new Set(selectedIds);
+                            if (e.target.checked) nx.add(service.id); else nx.delete(service.id);
+                            setSelectedIds(nx);
+                          }}
+                          title={`Select ${service.firstName} ${service.lastName}`}
+                        />
+                      </div>
+
                       <div className="table-cell">
                         <div className="date-info">
                           <div className="date-primary">
-                            {new Date(service.serviceDate).toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' })}
+                            {formatDateSafe(service.serviceDate)}
                           </div>
                           <div className="date-secondary">
-                            {new Date(service.serviceDate).toLocaleDateString('en-US', { weekday: 'short' })}
+                            {formatWeekday(service.serviceDate)}
                           </div>
                         </div>
                       </div>
@@ -1438,7 +1586,7 @@ return (
                       <div className="table-cell">
                         <div className="client-info">
                           <div className="client-name">{service.firstName} {service.lastName}</div>
-                          <div className="client-meta">Added {new Date(service.createdAt).toLocaleDateString()}</div>
+                          <div className="client-meta">Added {formatDateSafe(service.createdAt)}</div>
                         </div>
                       </div>
 
@@ -1477,6 +1625,19 @@ return (
                         })()}
                       </div>
 
+                      {/* Observations truncadas com tooltip */}
+                      <div className="table-cell">
+                        {service.observations ? (
+                          <div
+                            className="observations-ellipsis"
+                            title={service.observations}
+                            style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                          >
+                            {service.observations}
+                          </div>
+                        ) : <span className="no-obs">—</span>}
+                      </div>
+
                       <div className="table-cell">
                         <div className="value-info">
                           <div className="final-value">${Number(service.finalValue || 0).toFixed(2)}</div>
@@ -1484,17 +1645,21 @@ return (
                         </div>
                       </div>
 
-                      {/* Status com possível vínculo a pagamento */}
+                      {/* ✅ Status do serviço, sempre do backend; vínculo ao pagamento apenas como dica (title) */}
                       <div className="table-cell">
                         {(() => {
+                          const st = service.status?.id || 'RECORDED';
+                          const label = service.status?.name || 'Recorded';
                           const link = paymentIndex.get(service.id);
-                          if (!link) {
-                            return <span className="status-badge not-linked" title="Service not linked to any payment">Not linked</span>;
-                          }
-                          const label = String(link.status || 'IN_PAYMENT').replaceAll('_', ' ');
+                          const title = link
+                            ? `Linked to payment${link.paymentId ? ` #${link.paymentId}` : ''}${link.weekKey ? ` • ${link.weekKey}` : ''}`
+                            : 'Service status';
                           return (
-                            <span className={`status-badge payment ${String(link.status).toLowerCase()}`}
-                                  title={`Linked to payment${link.paymentId ? ` #${link.paymentId}` : ''}${link.weekKey ? ` • ${link.weekKey}` : ''}`}>
+                            <span
+                              className={`status-badge ${String(st).toLowerCase()}`}
+                              title={title}
+                              style={{ backgroundColor: (service.status?.color || undefined) }}
+                            >
                               {label}
                             </span>
                           );
@@ -1575,11 +1740,11 @@ return (
                   <div className="empty-icon"><Search size={48} /></div>
                   <h3>No services found</h3>
                   <p>
-                    {searchTerm || Object.values(filters).some((f) => f)
-                      ? 'Try adjusting your search criteria or filters.'
+                    {Object.values(filters).some((f) => f)
+                      ? 'Try adjusting your filters.'
                       : 'No services have been added yet. Switch to the form view to add your first service.'}
                   </p>
-                  {!searchTerm && !Object.values(filters).some((f) => f) && (
+                  {!Object.values(filters).some((f) => f) && (
                     <button className="add-first-service-btn" onClick={() => setViewMode('form')}>
                       <Plus size={20} /> Add First Service
                     </button>
@@ -1660,3 +1825,4 @@ return (
 };
 
 export default Services;
+
