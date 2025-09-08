@@ -6,6 +6,29 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* ===== GENERIC BUTTON SYSTEM (usado no JSX) ===== */
+.btn{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:10px 14px; border-radius:8px; font-weight:600; font-size:14px;
+  border:1px solid transparent; background:#111827; color:#fff; cursor:pointer; transition:.2s;
+}
+.btn--outline{ background:#fff; color:#374151; border-color:#e5e7eb; }
+.btn--outline:hover{ background:#f9fafb; border-color:#94a3b8; color:#111827; }
+.btn--primary{ background:#3b82f6; border-color:#3b82f6; color:#fff; }
+.btn--primary:hover{ background:#2563eb; border-color:#2563eb; }
+.btn--danger{ background:#ef4444; border-color:#ef4444; color:#fff; }
+.btn--danger:hover{ background:#dc2626; border-color:#dc2626; }
+.btn--sm{ padding:8px 10px; font-size:13px; border-radius:6px; }
+.btn--xs{ padding:6px 8px; font-size:12px; border-radius:6px; }
+.btn--block{ width:100%; justify-content:center; }
+.btn:disabled{ opacity:.6; cursor:not-allowed; }
+
+/* estado ativo nos toggles de visualização */
+.view-toggle .btn--outline.is-active,
+.btn.is-active{
+  background:#fff; color:#3b82f6; border-color:#bfdbfe; box-shadow:0 1px 3px rgba(0,0,0,.08);
+}
+
 /* ===== HEADER ===== */
 .services-header {
   display: flex;
@@ -42,6 +65,7 @@
   border-radius: 8px;
   padding: 4px;
 }
+/* suporte a versões antigas (se existir .toggle-btn no HTML) */
 .toggle-btn {
   display: flex;
   align-items: center;
@@ -130,6 +154,9 @@
 }
 .checkbox-label input[type="checkbox"]:checked + .checkbox-custom { background:#3b82f6; border-color:#3b82f6; }
 .checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after { content:'✓'; color:#fff; font-size:12px; font-weight:700; }
+/* versão compacta (checkbox da tabela) */
+.checkbox-label.compact{ gap:8px; }
+.checkbox-label.compact .checkbox-custom{ width:16px; height:16px; border-radius:3px; }
 
 /* Service Type Info */
 .service-type-info {
@@ -168,9 +195,8 @@
 }
 .breakdown-header { display:flex; align-items:center; gap:8px; font-weight:600; color:#374151; margin-bottom:12px; font-size:14px; }
 .breakdown-item { display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:13px; color:#6b7280; }
-.breakdown-total { display:flex; justify-content:space-between; align-items:center; padding:8px 0; margin-top:8px; border-top:1px solid #e2e8f0; font-weight:600; color:#374151; }
 
-/* Add to Cart Button */
+/* Add to Cart (legacy class – mantida por compatibilidade) */
 .add-to-cart-btn{
   width:100%; display:flex; align-items:center; justify-content:center; gap:12px;
   padding:16px; background:#3b82f6; color:white; border:none; border-radius:8px;
@@ -202,17 +228,23 @@
 /* Cart Table */
 .cart-table { display:flex; flex-direction:column; }
 .cart-table-header {
-  display:grid; grid-template-columns:2fr 1.5fr 2fr 1fr .5fr .8fr;
+  display:grid; grid-template-columns:2fr 1.5fr 2fr 1fr .6fr .8fr; /* colunas iguais às linhas */
   gap:12px; padding:16px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0;
   font-size:12px; font-weight:600; color:#374151; text-transform:uppercase; letter-spacing:.5px;
 }
 .cart-table-body { display:flex; flex-direction:column; }
 .cart-row {
-  display:grid; grid-template-columns:2fr 1.5fr 2fr 1fr .5fr .8fr;
+  display:grid; grid-template-columns:2fr 1.5fr 2fr 1fr .6fr .8fr;  /* idêntico ao header */
   gap:12px; padding:16px 20px; border-bottom:1px solid #f1f5f9; align-items:center;
 }
 .cart-row:hover { background:#f8fafc; }
 .cart-row:last-child { border-bottom:none; }
+
+/* Cart alinhamentos: valor (4ª col) e ações (6ª) à direita */
+.cart-table-header > *:nth-child(4){ justify-self:end; text-align:right; }
+.cart-row          > *:nth-child(4){ justify-self:end; text-align:right; }
+.cart-table-header > *:nth-child(6){ justify-self:end; }
+.cart-row          > *:nth-child(6) .col-actions{ justify-content:flex-end; }
 
 /* Cart Row Content */
 .service-info { display:flex; flex-direction:column; gap:4px; }
@@ -272,6 +304,8 @@
 .services-list-container{
   background:white; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.1);
   overflow:auto;
+  overflow-x:auto;          /* <-- scroll horizontal garantido */
+  overflow-y:hidden;
 }
 
 /* ===== LIST SUMMARY ===== */
@@ -305,17 +339,9 @@
   display:flex; align-items:flex-end; gap:16px; flex-wrap:nowrap;
   padding:24px; border-bottom:1px solid #e2e8f0; background:#f8fafc;
 }
-.search-section{ flex:1; margin-bottom:0; }
-.search-input-wrapper{ position:relative; max-width:none; }
-.search-input-wrapper svg{
-  position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#6b7280;
-}
-.search-input{
-  width:100%; padding:12px 16px 12px 44px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; background:white;
-}
-.search-input:focus{ outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.1); }
+/* bloco de ações em massa (bulk delete) */
+.bulk-actions{ display:flex; align-items:center; gap:10px; margin-left:auto; color:#374151; }
 
-/* Quando não existir a 'search-section', filtros se expandem naturalmente */
 .filters-section{
   flex:1; display:flex; align-items:flex-end; gap:12px; flex-wrap:nowrap;
   overflow-x:auto; padding-bottom:4px;
@@ -361,7 +387,8 @@
 .services-table-container{ position:relative; overflow:auto; }
 .services-table{
   display:flex; flex-direction:column;
-  min-width: 1320px; /* espaço para 11 colunas confortáveis */
+  min-width: 1120px; /* antes 1320px – mais flexível para telas menores */
+  width:100%;
 }
 
 /* --- 11 COLS: [select | date | client | partner | team | type | params | observations | value | status | actions] --- */
@@ -379,7 +406,7 @@
     minmax(180px,1.2fr)  /* 8: observations */
     120px                /* 9: value */
     120px                /*10: status */
-    100px;               /*11: actions */
+    140px;               /*11: actions */
   gap:16px;
   padding:16px 24px;
 }
@@ -418,12 +445,32 @@
 /* Conteúdo de células */
 .client-info, .partner-info, .service-type-info{ display:flex; align-items:center; gap:6px; min-width:0; }
 .client-name, .partner-name{ font-weight:500; font-size:13px; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+/* Esconde "Added ..." (createdAt) dentro da coluna client */
+.client-info .client-meta { display: none !important; }
+
 .team-badge{ display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; }
 .team-badge.us{ background:#dbeafe; color:#1e40af; }
 .team-badge.br{ background:#dcfce7; color:#166534; }
 .no-team{ color:#9ca3af; font-size:12px; }
+
 .value-info{ text-align:right; }
 .value, .final-value{ font-weight:600; color:#059669; }
+
+/* Observations flag (tabela) */
+.obs-flag{ display:inline-flex; align-items:center; gap:6px; color:#f59e0b; font-weight:600; }
+
+/* Inline edit (Amount) */
+.inline-edit{ display:flex; align-items:center; gap:8px; justify-content:flex-end; }
+.form-input.inline{ width:120px; height:36px; padding:8px 10px; }
+
+/* ==== FIX: coluna 9 (Amount) não corta o input quando editando ==== */
+.table-row .table-cell:nth-child(9){
+  overflow: visible;                /* libera o input */
+  position: relative;
+  z-index: 1;                       /* fica acima das vizinhas */
+}
+
+/* Status badges */
 .status-badge{ display:inline-block; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:500; color:white; text-transform:uppercase; }
 .has-observations{ color:#f59e0b; cursor:help; }
 .no-observations{ color:#9ca3af; font-size:12px; }
@@ -434,6 +481,9 @@
 /* 1) Select central */
 .table-header .header-cell:nth-child(1),
 .table-row    .table-cell:nth-child(1){ justify-content:center; text-align:center; }
+/* 5) Team central */
+.table-header .header-cell:nth-child(5),
+.table-row    .table-cell:nth-child(5){ justify-content:center; text-align:center; }
 /* 9) Value à direita */
 .table-header .header-cell:nth-child(9){ justify-content:flex-end; }
 .table-row    .table-cell:nth-child(9){
@@ -445,6 +495,9 @@
 /* 11) Actions à direita */
 .table-header .header-cell:nth-child(11){ justify-content:flex-end; }
 .table-row    .table-cell:nth-child(11) .action-buttons{ justify-content:flex-end; }
+
+/* (Opcional) oculta "(custom)" só na TABELA; mantém no carrinho */
+.services-table .value-note{ display:none; }
 
 /* ===== Pagination ===== */
 .pagination-container{
@@ -478,13 +531,22 @@
 .slide-in{ animation:slideIn .3s ease-out; }
 @keyframes slideIn{ from{opacity:0; transform:translateX(20px)} to{opacity:1; transform:translateX(0)} }
 
-/* ===== STATUS COLORS ===== */
+/* ===== STATUS COLORS (genéricos) ===== */
 .status-badge.recorded{ background:#3b82f6; }
 .status-badge.confirmed{ background:#059669; }
 .status-badge.in-progress{ background:#f59e0b; }
 .status-badge.completed{ background:#10b981; }
 .status-badge.cancelled{ background:#ef4444; }
 .status-badge.pending{ background:#6b7280; }
+
+/* ===== Payment link status badges ===== */
+.status-badge.not-linked{ background:#E5E7EB; color:#374151; }
+.status-badge.payment{ color:#0B1021; }
+.status-badge.payment.pending{  background:rgba(245,158,11,.15); }
+.status-badge.payment.shared{   background:rgba(96,165,250,.18); }
+.status-badge.payment.approved{ background:rgba(59,130,246,.15); }
+.status-badge.payment.on_hold{  background:rgba(251,191,36,.18); }
+.status-badge.payment.paid{     background:rgba(16,185,129,.18); }
 
 /* ===== RESPONSIVE (11 colunas) ===== */
 @media (max-width:1200px){
@@ -549,7 +611,6 @@
   .header-info h1{ font-size:20px; }
   .view-toggle{ width:100%; }
   .toggle-btn{ flex:1; justify-content:center; padding:8px 12px; font-size:14px; }
-  .week-badge{ font-size:12px; padding:6px 10px; }
 
   .service-form{ padding:12px; }
   .form-group{ margin-bottom:16px; }
@@ -680,24 +741,6 @@
 .toast-message{ opacity:.95; font-size:13px; line-height:1.35; }
 .toast-close{ background:transparent; border:0; color:#fff; opacity:.8; cursor:pointer; }
 .toast-close:hover{ opacity:1; }
-
-/* ===== Payment link status badges ===== */
-.status-badge.not-linked{ background:#E5E7EB; color:#374151; }
-.status-badge.payment{ color:#0B1021; }
-.status-badge.payment.pending{  background:rgba(245,158,11,.15); }
-.status-badge.payment.shared{   background:rgba(96,165,250,.18); }
-.status-badge.payment.approved{ background:rgba(59,130,246,.15); }
-.status-badge.payment.on_hold{  background:rgba(251,191,36,.18); }
-.status-badge.payment.paid{     background:rgba(16,185,129,.18); }
-
-/* ===== Focus / A11Y (única ocorrência) ===== */
-.form-input:focus, .form-select:focus, .form-textarea:focus,
-.search-input:focus, .filter-input:focus, .filter-select:focus{
-  outline:2px solid #3b82f6; outline-offset:2px;
-}
-.toggle-btn:focus, .action-btn:focus, .pagination-btn:focus, .page-number:focus{
-  outline:2px solid #3b82f6; outline-offset:2px;
-}
 
 /* ==== COMPACTAÇÃO DOS 4 CAMPOS EM GRID ==== */
 .form-row-compact-4{

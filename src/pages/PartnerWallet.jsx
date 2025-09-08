@@ -4,10 +4,11 @@ import {
   CalendarDays, Check, X, DollarSign, BarChart3, TrendingUp, Clock,
   ChevronLeft, ChevronRight, ChevronDown, Calendar
 } from 'lucide-react';
-import { httpClient as api } from '../api/http';
+import { api } from '../api/http';
 import '../styles/PartnerWallet.css';
 
-// ===== Helpers Semana (Qua→Ter) =====
+/* ================= Helpers ================= */
+
 function getWeekWedTue(date = new Date()) {
   const d = new Date(date);
   const dow = d.getDay();
@@ -17,7 +18,6 @@ function getWeekWedTue(date = new Date()) {
   return { start, end };
 }
 
-// UTC-safe YYYY-MM compare
 function sameYYYYMM(iso, ym){
   if (!iso || !ym) return false;
   const d = new Date(iso);
@@ -27,10 +27,7 @@ function sameYYYYMM(iso, ym){
 
 const fmtUSD = (n) => `$${Number(n || 0).toFixed(2)}`;
 const NORM = (s) => String(s || '').toUpperCase();
-const isPendingForPartner = (p) => NORM(p.status) === 'SHARED';
-const isVisibleToPartner  = (p) => NORM(p.status) !== 'PENDING';
 
-/** ---------- SERVICE TYPE LABELING ---------- */
 const SERVICE_LABELS = {
   IN_PERSON_TOUR: 'In Person Tour',
   VIRTUAL_TOUR: 'Virtual Tour',
@@ -38,78 +35,93 @@ const SERVICE_LABELS = {
   COORDINATOR: 'Coordinator',
   REIMBURSEMENT: 'Reimbursement',
 };
-
 const fmtServiceType = (v) => {
   if (!v) return '—';
-  let raw = '';
-  if (typeof v === 'object' && v !== null) {
-    raw = v.name || v.label || v.id || v.code || '';
-  } else {
-    raw = String(v);
-  }
+  let raw = (typeof v === 'object' && v !== null) ? (v.name || v.label || v.id || v.code || '') : String(v);
   if (!raw) return '—';
   const key = raw.trim().replace(/\s+/g, '_').replace(/-+/g, '_').toUpperCase();
   if (SERVICE_LABELS[key]) return SERVICE_LABELS[key];
   const spaced = raw.replace(/[_\-]+/g, ' ').trim().toLowerCase();
   return spaced.replace(/\b\w/g, (c) => c.toUpperCase());
 };
-/** ------------------------------------------- */
 
-export default function PartnerWallet({ currentUser, coloredCards = true }) {
-  const partnerId = currentUser?.id || currentUser?._id;
+function asId(v) {
+  if (!v) return null;
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object') return v._id || v.id || v.serviceId || null;
+  return null;
+}
+function extractServiceIdsFromPayment(p) {
+  if (Array.isArray(p?.serviceIds)) return p.serviceIds.map(asId).filter(Boolean);
+  if (Array.isArray(p?.services))   return p.services.map(asId).filter(Boolean);
+  if (Array.isArray(p?.items))      return p.items.map((it) => asId(it?.service || it?.serviceId || it)).filter(Boolean);
+  return [];
+}
+function embeddedServiceLines(p) {
+  if (Array.isArray(p?.services) && p.services.length && typeof p.services[0] === 'object') {
+    return p.services.map((s) => ({ ...s, id: s._id || s.id }));
+  }
+  if (Array.isArray(p?.items) && p.items.length && typeof p.items[0] === 'object') {
+    return p.items.map((s) => {
+      const sid = s._id || s.id || s.serviceId || (s.service && (s.service._id || s.service.id));
+      return { ...s, id: sid };
+    });
+  }
+  return [];
+}
 
-  // services cache (id -> obj)
+function monthToRange(ym) {
+  const [y,m] = ym.split('-').map(Number);
+  const from = new Date(Date.UTC(y, m-1, 1, 0,0,0,0));
+  const to   = new Date(Date.UTC(y, m,   0, 23,59,59,999));
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+/* ============== NOVO: mapeamento de status para visão simples ============== */
+/* Mostramos só: PENDING, APPROVED, PAID, DECLINED.
+   Qualquer outro (ex.: SHARED, ON_HOLD, PENDING) entra como "PENDING". */
+const viewStatus = (raw) => {
+  const s = NORM(raw);
+  if (s === 'APPROVED' || s === 'PAID' || s === 'DECLINED') return s;
+  return 'PENDING';
+};
+const isVisibleToPartner  = (p) => !['PENDING','CREATING'].includes(NORM(p.status)); // mantém lógica anterior
+
+/* ================================================================================= */
+
+export default function PartnerWallet({ currentUser, coloredCards = true, filterPartnerId = null }) {
+  const role = (currentUser?.role || currentUser?.userType || '').toString().toLowerCase();
+  const authIsPartner = role === 'partner';
+  const targetPartnerId = filterPartnerId || (authIsPartner ? (currentUser?.id || currentUser?._id) : null);
+
   const [servicesById, setServicesById] = useState(new Map());
-  // payments
   const [payments, setPayments] = useState([]);
   const [loading, setLoading]   = useState(false);
+  const [lastError, setLastError] = useState(null);
 
-  // filtros
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('PENDING'); // agora começa em PENDING
   const defaultMonth = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
 
-  // Payments by status
   const [psMonth, setPsMonth] = useState(defaultMonth);
   const [psPage, setPsPage]   = useState(1);
-
-  // All payments
   const [apMonth, setApMonth] = useState(defaultMonth);
   const [apPage, setApPage]   = useState(1);
 
-  // métricas
   const [weekRef, setWeekRef] = useState(getWeekWedTue(new Date()).start);
 
-  // reject modal
   const [rejecting, setRejecting]       = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  // breakdown toggle
   const [openMap, setOpenMap] = useState({});
   const isOpen = (id) => !!openMap[id];
   const toggleOpen = (id) => setOpenMap(m => ({ ...m, [id]: !m[id] }));
 
-  // narrow layout
-  const [isNarrow, setIsNarrow] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 720px)');
-    const apply = () => setIsNarrow(!!mq.matches);
-    apply();
-    if (mq.addEventListener) mq.addEventListener('change', apply);
-    else mq.addListener(apply);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener('change', apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
-
-  // dropdown status
+  /* ===== dropdown de status (apenas 4 opções) ===== */
   const STATUS_OPTIONS = [
-    { value: '',         label: 'Pending' }, // SHARED + ON_HOLD
-    { value: 'SHARED',   label: 'Shared' },
-    { value: 'APPROVED', label: 'Approved' },
-    { value: 'PAID',     label: 'Paid' },
-    { value: 'ON_HOLD',  label: 'On hold' },
-    { value: 'DECLINED', label: 'Declined' },
+    { value: 'PENDING',   label: 'Pending'   },
+    { value: 'APPROVED',  label: 'Approved'  },
+    { value: 'PAID',      label: 'Paid'      },
+    { value: 'DECLINED',  label: 'Declined'  },
   ];
   const [statusOpen, setStatusOpen] = useState(false);
   const statusRef = useRef(null);
@@ -124,52 +136,85 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
   }, []);
   const statusLabel = STATUS_OPTIONS.find(o => o.value === statusFilter)?.label || 'Pending';
 
-  // ========================= CARREGAR PAYMENTS =========================
-  useEffect(() => {
-    if (!partnerId) return;
-    let alive = true;
+  /* =================== Fetch helpers =================== */
+  const DEV = typeof window !== 'undefined' && window?.location?.hostname === 'localhost';
+  const pickItems = (res) => Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : []);
 
+  async function fetchPaymentsByMonth(month) {
+    setLastError(null);
+    const baseParams = {
+      month,
+      pageSize: 500,
+      sortBy: 'weekStart',
+      sortDir: 'desc',
+      ...(DEV ? { debug: 1 } : {}),
+      ...(targetPartnerId && !authIsPartner ? { partnerId: targetPartnerId } : {}),
+    };
+
+    try {
+      return await api.get('/payments', { params: baseParams });
+    } catch (err) {
+      setLastError(err?.data?.error || err?.message || 'Unknown error');
+      try {
+        const { from, to } = monthToRange(month);
+        const alt = await api.get('/payments', {
+          params: {
+            from, to, pageSize: 500, sortBy: 'weekStart', sortDir: 'desc',
+            ...(DEV ? { debug: 1 } : {}),
+            ...(targetPartnerId && !authIsPartner ? { partnerId: targetPartnerId } : {}),
+          }
+        });
+        return alt;
+      } catch (err2) {
+        setLastError(err2?.data?.error || err2?.message || 'Unknown error');
+        throw err2;
+      }
+    }
+  }
+
+  /* =============== Load payments =============== */
+  useEffect(() => {
+    let alive = true;
     (async () => {
       setLoading(true);
       try {
-        const [a, b] = await Promise.all([
-          api.get('/payments', { params: { partnerId, month: psMonth, pageSize: 500 } }),
-          api.get('/payments', { params: { partnerId, month: apMonth, pageSize: 500 } }),
-        ]);
+        let listA = [], listB = [];
+        if (psMonth === apMonth) {
+          const a = await fetchPaymentsByMonth(psMonth); listA = pickItems(a);
+        } else {
+          const [a, b] = await Promise.all([ fetchPaymentsByMonth(psMonth), fetchPaymentsByMonth(apMonth) ]);
+          listA = pickItems(a); listB = pickItems(b);
+        }
 
-        const listA = Array.isArray(a?.data?.items) ? a.data.items : (Array.isArray(a?.data) ? a.data : []);
-        const listB = Array.isArray(b?.data?.items) ? b.data.items : (Array.isArray(b?.data) ? b.data : []);
-
-        // merge por id
         const map = new Map();
-        [...listA, ...listB].forEach(p => map.set(p._id || p.id, { ...p, id: p._id || p.id }));
-
-        // segurança por parceiro
-        const merged = Array.from(map.values()).filter(p => p.partnerId === partnerId);
-
-        // ordena por semana/criação desc
-        merged.sort((x,y) => new Date(y.weekStart || y.createdAt || 0) - new Date(x.weekStart || x.createdAt || 0));
+        [...listA, ...listB].forEach(p => {
+          const id = String(p._id || p.id || '');
+          if (!id) return;
+          map.set(id, { ...p, id });
+        });
+        const merged = Array.from(map.values())
+          .sort((x,y) => new Date(y.weekStart || y.createdAt || 0) - new Date(x.weekStart || x.createdAt || 0));
 
         if (alive) setPayments(merged);
       } catch (e) {
-        if (alive) setPayments([]);
-        console.warn('Failed to load payments', e);
+        if (alive) { setPayments([]); console.warn('Failed to load payments', e); }
       } finally {
         if (alive) setLoading(false);
       }
     })();
-
     return () => { alive = false; };
-  }, [partnerId, psMonth, apMonth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [psMonth, apMonth, targetPartnerId, authIsPartner]);
 
-  // ========================= CARREGAR SERVICES (breakdown) =========================
+  /* =============== Load services for breakdown =============== */
   useEffect(() => {
     if (!payments.length) return;
 
-    const allIds = new Set();
-    payments.forEach(p => (p.serviceIds || []).forEach(id => allIds.add(id)));
+    const allIdsSet = new Set();
+    payments.forEach((p) => extractServiceIdsFromPayment(p).forEach((id) => allIdsSet.add(id)));
+    if (allIdsSet.size === 0) return;
 
-    const missing = Array.from(allIds).filter(id => !servicesById.has(id));
+    const missing = Array.from(allIdsSet).filter((id) => !servicesById.has(id));
     if (missing.length === 0) return;
 
     let alive = true;
@@ -180,11 +225,9 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
         for (let i = 0; i < missing.length; i += chunk) {
           const idsArr = missing.slice(i, i + chunk);
           const r = await api.get('/services', {
-            // compat: dev e prod
-            params: { 'ids[]': idsArr, ids: idsArr.join(','), pageSize: idsArr.length }
+            params: { ids: idsArr.join(','), 'ids[]': idsArr, pageSize: idsArr.length, ...(DEV ? { debug: 1 } : {}) }
           });
-          const items = Array.isArray(r?.data?.items) ? r.data.items
-            : (Array.isArray(r?.data) ? r.data : []);
+          const items = pickItems(r);
           fetched.push(...items);
         }
         const next = new Map(servicesById);
@@ -196,20 +239,34 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     })();
 
     return () => { alive = false; };
-  }, [payments]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payments]);
 
-  // ===== DERIVADOS =====
-  // Payments by status (filtro mês com fallback)
+  const linesForPayment = (p) => {
+    const embedded = embeddedServiceLines(p);
+    if (embedded.length) return embedded;
+    const ids = extractServiceIdsFromPayment(p);
+    if (!ids.length) return [];
+    return ids.map((id) => servicesById.get(id)).filter(Boolean);
+  };
+
+  const sumValues = (arr) =>
+    arr.reduce((acc, it) => acc + Number(it?.finalValue ?? it?.amount ?? it?.total ?? 0), 0);
+
+  const totalForPayment = (p) => {
+    const lines = linesForPayment(p);
+    if (Array.isArray(lines) && lines.length) return sumValues(lines);
+    return Number(p.total ?? p.displayTotal ?? p.totalComputed ?? 0);
+  };
+
+  /* =============== Derivados =============== */
   const statusPayments = useMemo(() => {
     let arr = payments.slice();
-    if (statusFilter) arr = arr.filter(p => NORM(p.status) === statusFilter);
-    else arr = arr.filter(p => isPendingForPartner(p) || NORM(p.status) === 'ON_HOLD');
-
+    arr = arr.filter(p => viewStatus(p.status) === statusFilter);
     arr = arr.filter(p => {
       const ref = p.weekStart || p.periodFrom || p.periodTo || p.createdAt;
       return ref && sameYYYYMM(ref, psMonth);
     });
-
     arr.sort((a,b) => new Date(b.weekStart || b.createdAt || 0) - new Date(a.weekStart || a.createdAt || 0));
     return arr;
   }, [payments, statusFilter, psMonth]);
@@ -217,7 +274,6 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
   const psTotalPages = Math.max(1, statusPayments.length || 1);
   const psCurrent = statusPayments[psPage - 1] || null;
 
-  // All payments (parceiro não vê PENDING) — filtro mês com fallback
   const allPaymentsFiltered = useMemo(() => {
     const arr = payments
       .filter(isVisibleToPartner)
@@ -232,25 +288,25 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
   const apTotalPages = Math.max(1, allPaymentsFiltered.length || 1);
   const apCurrent = allPaymentsFiltered[apPage - 1] || null;
 
-  // Métricas — excluir PENDING (com fallback)
   const [weekMetrics, monthMetrics, pendingCount, yearTotal] = useMemo(() => {
     const { start, end } = getWeekWedTue(weekRef);
+
     const inWeek = payments.filter(p => {
       if (!isVisibleToPartner(p)) return false;
       const ref = p.weekStart || p.createdAt;
       const d = ref ? new Date(ref) : null;
       return d && d >= start && d <= end;
     });
-    const weekTotal = inWeek.reduce((sum, p) => sum + (Number(p.total) || 0), 0);
+    const weekTotal = inWeek.reduce((sum, p) => sum + totalForPayment(p), 0);
 
     const inMonth = payments.filter(p => {
       if (!isVisibleToPartner(p)) return false;
       const ref = p.weekStart || p.periodFrom || p.periodTo || p.createdAt;
       return ref && sameYYYYMM(ref, apMonth);
     });
-    const monthTotal = inMonth.reduce((sum, p) => sum + (Number(p.total) || 0), 0);
+    const monthTotal = inMonth.reduce((sum, p) => sum + totalForPayment(p), 0);
 
-    const pendCount = payments.filter(p => isPendingForPartner(p)).length;
+    const pendCount = payments.filter(p => viewStatus(p.status) === 'PENDING').length;
 
     const Y = new Date().getFullYear();
     const yCount = payments.filter(p => {
@@ -268,19 +324,18 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     ];
   }, [payments, weekRef, apMonth]);
 
-  // Reseta paginação ao mudar filtros
   useEffect(() => { setPsPage(1); }, [statusFilter, psMonth]);
 
-  // ===== AÇÕES =====
   const pushAuditLocal = (p, text) => {
     const list = Array.isArray(p.notesLog) ? p.notesLog.slice() : [];
-    list.push({ id: crypto?.randomUUID?.() || `note_${Date.now()}`, at:new Date().toISOString(), text });
+    const rid = (typeof window !== 'undefined' && window.crypto?.randomUUID) ? window.crypto.randomUUID() : `note_${Date.now()}`;
+    list.push({ id: rid, at:new Date().toISOString(), text });
     return list;
   };
 
   const approve = async (p) => {
     try {
-      const { data } = await api.patch(`/payments/${p.id}`, {
+      const data = await api.patch(`/payments/${p.id}`, {
         status: 'APPROVED',
         appendNote: true,
         notes: 'Partner approved'
@@ -298,7 +353,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     if (!rejecting || !rejectReason.trim()) return;
     const p = rejecting;
     try {
-      const { data } = await api.patch(`/payments/${p.id}`, {
+      const data = await api.patch(`/payments/${p.id}`, {
         status: 'DECLINED',
         appendNote: true,
         notes: `Partner declined — ${rejectReason.trim()}`
@@ -323,40 +378,10 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     return '—';
   };
 
-  const linesForPayment = (p) => (p.serviceIds || []).map(id => servicesById.get(id)).filter(Boolean);
-
+  /* ======= Breakdown table: render sempre 6 colunas (CSS adapta no mobile) ======= */
   const renderBreakdownTable = (lines) => {
     if (!lines?.length) return null;
 
-    if (isNarrow) {
-      return (
-        <div className="table table--breakdown">
-          <div className="thead">
-            <div className="th">Date</div>
-            <div className="th">Client</div>
-            <div className="th right">Amount</div>
-          </div>
-          <div className="tbody">
-            {lines.map(s => {
-              const client = `${s.firstName || ''} ${s.lastName || ''}`.trim() || '—';
-              return (
-                <div key={s.id} className="tr">
-                  <div className="td" data-label="Date">
-                    {s.serviceDate ? new Date(s.serviceDate).toLocaleDateString() : '—'}
-                  </div>
-                  <div className="td" data-label="Client">{client}</div>
-                  <div className="td right amount" data-label="Amount">
-                    <span className="value">{fmtUSD(s.finalValue)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-
-    // DESKTOP
     return (
       <div className="table table--breakdown">
         <div className="thead">
@@ -380,6 +405,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                 <div className="td" data-label="Client">{client}</div>
                 <div className="td" data-label="Service">
                   <div className="main">{fmtServiceType(s?.serviceType || s?.serviceTypeId)}</div>
+                  <div className="sub">{s?.notes || s?.title || ''}</div>
                 </div>
                 <div className="td" data-label="Park">{park}</div>
                 <div className="td center" data-label="Guests">{guests}</div>
@@ -394,10 +420,14 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
     );
   };
 
-  const statusPillClass = `wf-status status-theme--${(statusFilter || 'PENDING').toUpperCase()}`;
+  const statusClass = (p) => viewStatus(p.status).toLowerCase();
 
+  /* =========================== RENDER =========================== */
   return (
     <div className="partner-page wallet-page">
+      {/* Título 3D (apenas dentro da página — não mexe no header global) */}
+ 
+
       {/* ===== MÉTRICAS ===== */}
       <div className="wallet-metrics">
         <div className={`wm-card ${coloredCards ? 'wm-blue' : ''}`}>
@@ -436,7 +466,11 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
 
       {/* ===== FILTRO STATUS ===== */}
       <div className="wallet-filters">
-        <div className={`${statusPillClass} status-dd`} ref={statusRef} data-open={statusOpen}>
+        <div className="wf-status status-theme--PENDING" style={{display:'none'}} aria-hidden />
+        <div className="wf-status status-theme--APPROVED" style={{display:'none'}} aria-hidden />
+        <div className="wf-status status-theme--PAID" style={{display:'none'}} aria-hidden />
+        <div className="wf-status status-theme--DECLINED" style={{display:'none'}} aria-hidden />
+        <div className="status-dd" ref={statusRef} data-open={statusOpen}>
           <label>Status</label>
           <button
             type="button"
@@ -453,13 +487,10 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
             <div className="status-dd-menu" role="listbox">
               {STATUS_OPTIONS.map(opt => (
                 <button
-                  key={opt.value || 'pending'}
+                  key={opt.value}
                   role="option"
                   className={`status-dd-item${statusFilter === opt.value ? ' active' : ''}`}
-                  onClick={() => {
-                    setStatusFilter(opt.value);
-                    setStatusOpen(false);
-                  }}
+                  onClick={() => { setStatusFilter(opt.value); setStatusOpen(false); }}
                 >
                   {opt.label}
                 </button>
@@ -476,18 +507,17 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
         <div className="ap-filters">
           <div className="ap-month">
             <label>Month</label>
-            <input
-              type="month"
-              value={psMonth}
-              onChange={(e) => { setPsMonth(e.target.value || defaultMonth); setPsPage(1); }}
-            />
+            <input type="month" value={psMonth} onChange={(e) => { setPsMonth(e.target.value || defaultMonth); setPsPage(1); }} />
           </div>
         </div>
 
         {loading && statusPayments.length === 0 ? (
           <div className="wallet-empty">Loading…</div>
         ) : statusPayments.length === 0 ? (
-          <div className="wallet-empty">No items for this status.</div>
+          <div className="wallet-empty">
+            No items for this status.
+            {lastError && <div className="err-inline">Last error: {String(lastError)}</div>}
+          </div>
         ) : (
           <div className="ap-one">
             {(() => {
@@ -501,7 +531,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                     <div className="wi-top">
                       <div className="wi-type"><CalendarDays size={16}/> Week • {weekLabel(p)}</div>
                       <div className="wi-status-wrap" style={{display:'flex', gap:8, alignItems:'center'}}>
-                        <div className={`wi-status tag ${NORM(p.status).toLowerCase()}`}>{String(p.status || '').toLowerCase()}</div>
+                        <div className={`wi-status tag ${statusClass(p)}`}>{viewStatus(p.status).toLowerCase()}</div>
                         {Array.isArray(p.notesLog) && p.notesLog.length > 0 && (
                           <span className="tag notes" title="Notes on this payment">
                             {p.notesLog.length} note{p.notesLog.length > 1 ? 's' : ''}
@@ -511,7 +541,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                     </div>
                     <div className="wi-grid">
                       <div className="wi-row"><span>Partner</span><strong>{p.partnerName || '—'}</strong></div>
-                      <div className="wi-row"><span>Services</span><strong>{(p.serviceIds || []).length}</strong></div>
+                      <div className="wi-row"><span>Services</span><strong>{extractServiceIdsFromPayment(p).length || embeddedServiceLines(p).length || 0}</strong></div>
                       <div className="wi-row">
                         <span>Details</span>
                         <strong className="muted">
@@ -524,20 +554,20 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                   </div>
 
                   <div className="wi-side">
-                    <div className="wi-price">{fmtUSD(p.total)}</div>
+                    <div className="wi-price">{fmtUSD(totalForPayment(p))}</div>
                     <div className="wi-actions">
-                      <button className="wi-approve" onClick={()=>approve(p)} disabled={NORM(p.status)!=='SHARED'}>
+                      <button className="wi-approve" onClick={()=>approve(p)} disabled={viewStatus(p.status) !== 'PENDING'}>
                         <Check size={16}/> Approve
                       </button>
-                      <button className="wi-reject"  onClick={()=>beginReject(p)} disabled={NORM(p.status)!=='SHARED'}>
+                      <button className="wi-reject"  onClick={()=>beginReject(p)} disabled={viewStatus(p.status) !== 'PENDING'}>
                         <X size={16}/> Reject
                       </button>
                     </div>
                   </div>
 
-                  {/* Breakdown */}
+                  {/* Breakdown – container com scroll interno (x e y) */}
                   <div className="breakdown-box" data-open={isOpen(p.id)}>
-                    <button className="bd-toggle" onClick={() => toggleOpen(p.id)}>
+                    <button className="bd-toggle" onClick={() => toggleOpen(p.id)} aria-expanded={isOpen(p.id)}>
                       <span>Breakdown</span>
                       <ChevronDown size={16} className="chev" />
                     </button>
@@ -569,25 +599,11 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
 
             {/* paginação */}
             <div className="ap-pagination">
-              <button
-                className="ap-btn"
-                onClick={() => setPsPage(p => Math.max(1, p - 1))}
-                disabled={psPage === 1}
-                aria-label="Previous"
-              >
+              <button className="ap-btn" onClick={() => setPsPage(p => Math.max(1, p - 1))} disabled={psPage === 1} aria-label="Previous">
                 <ChevronLeft size={18} />
               </button>
-
-              <div className="ap-indicator">
-                {psPage} / {psTotalPages}
-              </div>
-
-              <button
-                className="ap-btn"
-                onClick={() => setPsPage(p => Math.min(psTotalPages, p + 1))}
-                disabled={psPage === psTotalPages}
-                aria-label="Next"
-              >
+              <div className="ap-indicator">{psPage} / {psTotalPages}</div>
+              <button className="ap-btn" onClick={() => setPsPage(p => Math.min(psTotalPages, p + 1))} disabled={psPage === psTotalPages} aria-label="Next">
                 <ChevronRight size={18} />
               </button>
             </div>
@@ -616,7 +632,10 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
         {loading && allPaymentsFiltered.length === 0 ? (
           <div className="wallet-empty">Loading…</div>
         ) : allPaymentsFiltered.length === 0 ? (
-          <div className="wallet-empty">No payments for this month.</div>
+          <div className="wallet-empty">
+            No payments for this month.
+            {lastError && <div className="err-inline">Last error: {String(lastError)}</div>}
+          </div>
         ) : (
           <div className="ap-one">
             {(() => {
@@ -630,8 +649,8 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                     <div className="wi-top">
                       <div className="wi-type"><Calendar size={16}/> {weekLabel(p)}</div>
                       <div className="wi-status-wrap" style={{display:'flex', gap:8, alignItems:'center'}}>
-                        <div className={`wi-status tag ${NORM(p.status).toLowerCase()}`}>
-                          {String(p.status || '').toLowerCase()}
+                        <div className={`wi-status tag ${statusClass(p)}`}>
+                          {viewStatus(p.status).toLowerCase()}
                         </div>
                         {Array.isArray(p.notesLog) && p.notesLog.length > 0 && (
                           <span className="tag notes" title="Notes on this payment">
@@ -642,17 +661,17 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
                     </div>
                     <div className="wi-grid">
                       <div className="wi-row"><span>Partner</span><strong>{p.partnerName || '—'}</strong></div>
-                      <div className="wi-row"><span># Services</span><strong>{(p.serviceIds || []).length}</strong></div>
+                      <div className="wi-row"><span># Services</span><strong>{extractServiceIdsFromPayment(p).length || embeddedServiceLines(p).length || 0}</strong></div>
                     </div>
                   </div>
 
                   <div className="wi-side">
-                    <div className="wi-price">{fmtUSD(p.total)}</div>
+                    <div className="wi-price">{fmtUSD(totalForPayment(p))}</div>
                   </div>
 
-                  {/* Breakdown */}
+                  {/* Breakdown – container com scroll interno (x e y) */}
                   <div className="breakdown-box" data-open={isOpen(p.id)}>
-                    <button className="bd-toggle" onClick={() => toggleOpen(p.id)}>
+                    <button className="bd-toggle" onClick={() => toggleOpen(p.id)} aria-expanded={isOpen(p.id)}>
                       <span>Breakdown</span>
                       <ChevronDown size={16} className="chev" />
                     </button>
@@ -683,25 +702,11 @@ export default function PartnerWallet({ currentUser, coloredCards = true }) {
             })()}
 
             <div className="ap-pagination">
-              <button
-                className="ap-btn"
-                onClick={() => setApPage((p) => Math.max(1, p - 1))}
-                disabled={apPage === 1}
-                aria-label="Previous"
-              >
+              <button className="ap-btn" onClick={() => setApPage((p) => Math.max(1, p - 1))} disabled={apPage === 1} aria-label="Previous">
                 <ChevronLeft size={18} />
               </button>
-
-              <div className="ap-indicator">
-                {apPage} / {apTotalPages}
-              </div>
-
-              <button
-                className="ap-btn"
-                onClick={() => setApPage((p) => Math.min(apTotalPages, p + 1))}
-                disabled={apPage === apTotalPages}
-                aria-label="Next"
-              >
+              <div className="ap-indicator">{apPage} / {apTotalPages}</div>
+              <button className="ap-btn" onClick={() => setApPage((p) => Math.min(apTotalPages, p + 1))} disabled={apPage === apTotalPages} aria-label="Next">
                 <ChevronRight size={18} />
               </button>
             </div>

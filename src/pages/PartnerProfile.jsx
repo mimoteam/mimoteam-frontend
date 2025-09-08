@@ -1,478 +1,508 @@
 // src/pages/PartnerProfile.jsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import '../styles/PartnerProfile.css';
-import { getMe, getUserById, updateUser, uploadAvatar, deleteAvatar } from '../api/users';
-import { toAbsoluteUrl } from '../api/http';
+import React, { useEffect, useMemo, useState } from "react";
+import "../styles/PartnerProfile.css";
+import { toAbsoluteUrl } from "../api/http";
+import { getCurrentUser, saveStoredUser } from "../api/auth";
+import { updateUser, uploadAvatar, deleteAvatar, getMe, getUserById } from "../api/users";
 
-const USERS_KEY = 'users_store_v1';
+/* ================= Helpers ================= */
+const DEFAULT_AVATAR =
+  "data:image/svg+xml;utf8," +
+  "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>" +
+  "<rect width='64' height='64' rx='12' ry='12' fill='%23E2E8F0'/>" +
+  "<circle cx='32' cy='24' r='12' fill='%2394A3B8'/>" +
+  "<path d='M10 56a22 22 0 0144 0' fill='%2394A3B8'/></svg>";
 
-/* ========= Helpers ========= */
-function toTitleCase(input) {
-  const s = String(input || '');
-  const lower = s.toLocaleLowerCase();
+const CURRENT_USER_KEY = "current_user_v1";
+
+function toTitle(s) {
+  const str = String(s || "");
+  const lower = str.toLocaleLowerCase();
   return lower.replace(/(^|[\s\-\/\.])([\p{L}])/gu, (_, sep, chr) => sep + chr.toLocaleUpperCase());
 }
-function absolutize(url) {
-  return toAbsoluteUrl(url);
+function initialsFrom(name) {
+  const n = String(name || "").trim();
+  if (!n) return "U";
+  const parts = n.split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase()).join("");
+}
+function absolutize(u) {
+  return toAbsoluteUrl(u || "");
 }
 
-/** Converte qualquer valor de data (ISO, Date, etc.) para YYYY-MM-DD */
-function toYMD(v) {
-  if (!v) return '';
-  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toISOString().slice(0, 10);
-}
-function ymdToISO(ymd) {
-  if (!ymd) return '';
-  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return '';
-  const y = Number(m[1]), mo = Number(m[2]), da = Number(m[3]);
-  const dt = new Date(Date.UTC(y, mo - 1, da, 0, 0, 0, 0));
-  return dt.toISOString();
-}
-function formatDateNice(value) {
-  const ymd = toYMD(value);
-  if (!ymd) return '—';
-  const [y, m, d] = ymd.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+/** ---------- Conversões de data (sem usar Date/UTC) ---------- */
+/** Aceita ISO, YYYY-MM-DD ou MM/DD/YYYY e retorna YYYY-MM-DD */
+function parseAnyToYMD(v) {
+  if (!v) return "";
+  const s = String(v).trim();
+
+  // Pega os 10 primeiros se for ISO-like (YYYY-MM-DD...)
+  const mIso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (mIso) return `${mIso[1]}-${mIso[2]}-${mIso[3]}`;
+
+  // MM/DD/YYYY
+  const mdy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (mdy) {
+    const mm = mdy[1].padStart(2, "0");
+    const dd = mdy[2].padStart(2, "0");
+    const yy = mdy[3];
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  // YYYYMMDD ou MMDDYYYY
+  const digits = s.replace(/[^\d]/g, "");
+  if (digits.length === 8) {
+    const asYMD = digits.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (asYMD) return `${asYMD[1]}-${asYMD[2]}-${asYMD[3]}`;
+    const asMDY = digits.match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (asMDY) return `${asMDY[3]}-${asMDY[1]}-${asMDY[2]}`;
+  }
+
+  // Já está em YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  return "";
 }
 
-const DEFAULT_AVATAR_URL =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' ry='12' fill='%23E2E8F0'/><circle cx='32' cy='24' r='12' fill='%2394A3B8'/><path d='M10 56a22 22 0 0144 0' fill='%2394A3B8'/></svg>";
+/** YYYY-MM-DD -> MM/DD/YYYY */
+function ymdToMDY(ymd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd || "")) return "";
+  const [y, m, d] = String(ymd).split("-");
+  return `${m}/${d}/${y}`;
+}
 
-export default function PartnerProfile({ currentUser, onUserUpdate }) {
-  const userId = currentUser?.id || currentUser?._id;
-  const avatarKey = userId ? `partner_avatar_${userId}` : 'partner_avatar';
+/** MM/DD/YYYY -> YYYY-MM-DD */
+function mdyToYMD(mdy) {
+  const m = String(mdy || "").match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (!m) return "";
+  const mm = m[1].padStart(2, "0");
+  const dd = m[2].padStart(2, "0");
+  const yy = m[3];
+  return `${yy}-${mm}-${dd}`;
+}
 
-  const [serverUser, setServerUser] = useState(null);
-  const [loadingUser, setLoadingUser] = useState(!!userId);
-  const [loadError, setLoadError] = useState('');
+/** máscara leve para MM/DD/YYYY */
+function maskMDY(input) {
+  const digits = String(input || "").replace(/[^\d]/g, "").slice(0, 8);
+  const mm = digits.slice(0, 2);
+  const dd = digits.slice(2, 4);
+  const yy = digits.slice(4, 8);
+  if (digits.length <= 2) return mm;
+  if (digits.length <= 4) return `${mm}/${dd}`;
+  return `${mm}/${dd}/${yy}`;
+}
+
+/** valida MM/DD/YYYY com checagem de calendário */
+function isValidMDY(mdy) {
+  const m = String(mdy || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return false;
+  const mm = +m[1], dd = +m[2], yy = +m[3];
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return false;
+  const monthLengths = [31, (yy % 4 === 0 && (yy % 100 !== 0 || yy % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return dd <= monthLengths[mm - 1];
+}
+
+/* ================ Componente ================= */
+export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) {
+  const [loading, setLoading] = useState(true); // só na carga inicial
+  const [user, setUser] = useState(null);
+  const userId = user?._id || user?.id || propUser?._id || propUser?.id || "";
 
   // avatar
-  const [avatar, setAvatar] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [uploadMsg, setUploadMsg] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  // datas
-  const [dob, setDob] = useState(toYMD(currentUser?.birthday || currentUser?.dob || ''));
-  const [hireDate, setHireDate] = useState(
-    toYMD(currentUser?.hireDate || currentUser?.startDate || currentUser?.companyStartDate || '')
-  );
+  // datas (em MM/DD/YYYY na UI)
+  const [dob, setDob] = useState("");
+  const [hire, setHire] = useState("");
+  const [initialDob, setInitialDob] = useState("");
+  const [initialHire, setInitialHire] = useState("");
+
   const [savingDob, setSavingDob] = useState(false);
   const [savingHire, setSavingHire] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
 
-  // passkey
-  const faceKey = userId ? `faceid_enabled_${userId}` : 'faceid_enabled';
-  const [faceEnabled, setFaceEnabled] = useState(false);
-  const [faceSupport, setFaceSupport] = useState(null);
+  // impede que handlers globais roubem foco (sem preventDefault)
+  const stopBubble = (e) => e.stopPropagation();
 
-  const displayName       = useMemo(() => toTitleCase(serverUser?.fullName ?? currentUser?.fullName), [serverUser, currentUser]);
-  const displayRole       = useMemo(() => toTitleCase(serverUser?.role     ?? currentUser?.role),     [serverUser, currentUser]);
-  const displayDepartment = useMemo(() => toTitleCase(serverUser?.department ?? currentUser?.department), [serverUser, currentUser]);
-
-  const onUserUpdateRef = useRef(onUserUpdate);
-  useEffect(() => { onUserUpdateRef.current = onUserUpdate; }, [onUserUpdate]);
-
+  // ======== Carrega usuário + fallback para datas faltantes ========
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(avatarKey);
-      if (saved) setAvatar(saved);
-    } catch {}
-  }, [avatarKey]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const supported = !!window.PublicKeyCredential &&
-          (await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.()) === true;
-        setFaceSupport(supported);
-      } catch { setFaceSupport(false); }
-      try { setFaceEnabled(localStorage.getItem(faceKey) === '1'); } catch {}
-    })();
-  }, [faceKey]);
-
-  // Evita loop: busca só quando userId muda
-  const lastFetchedIdRef = useRef(null);
-  useEffect(() => {
-    if (!userId) return;
-    if (lastFetchedIdRef.current === userId) return;
-    lastFetchedIdRef.current = userId;
-
     let alive = true;
-    (async () => {
-      setLoadingUser(true);
-      setLoadError('');
+
+    async function boot() {
       try {
-        const u = await getMe().catch(() => getUserById(userId));
+        // 1) base: propUser -> /auth/me -> localStorage
+        let base = propUser || (await getCurrentUser().catch(() => null));
+        if (!base) {
+          try { base = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || "null"); } catch {}
+        }
+
+        const normalized = {
+          ...(base || {}),
+          avatarUrl: absolutize(base?.avatarUrl || base?.photoUrl || base?.imageUrl || ""),
+        };
         if (!alive) return;
-        const normalized = { ...u, avatarUrl: absolutize(u?.avatarUrl || u?.photoUrl || u?.imageUrl || '') };
-        setServerUser(normalized);
-        setDob(toYMD(normalized?.birthday || normalized?.dob || ''));
-        setHireDate(toYMD(normalized?.hireDate || normalized?.startDate || normalized?.companyStartDate || ''));
-        setAvatarUrl(normalized?.avatarUrl || '');
-        onUserUpdateRef.current?.(normalized);
-      } catch {
+
+        setUser(normalized || {});
+        setAvatarUrl(normalized?.avatarUrl || "");
+
+        // Deriva datas da primeira resposta (preferindo virtuais *YMD)
+        let ymdDOB =
+          normalized?.birthdayYMD ||
+          parseAnyToYMD(normalized?.birthday || normalized?.dob || "");
+        let ymdHIRE =
+          normalized?.hireDateYMD ||
+          normalized?.startDateYMD ||
+          normalized?.companyStartDateYMD ||
+          parseAnyToYMD(
+            normalized?.hireDate || normalized?.startDate || normalized?.companyStartDate || ""
+          );
+
+        // 2) Fallback: se ainda estiverem vazias, buscar o doc completo
+        if ((!ymdDOB || !ymdHIRE) && (normalized?._id || normalized?.id)) {
+          try {
+            const fresh = (await getMe().catch(() => null)) || (await getUserById(normalized._id || normalized.id).catch(() => null));
+            if (fresh) {
+              // merge não destrutivo
+              const merged = { ...normalized, ...fresh };
+              if (alive) setUser(merged);
+
+              ymdDOB =
+                merged?.birthdayYMD ||
+                parseAnyToYMD(merged?.birthday || merged?.dob || ymdDOB || "");
+              ymdHIRE =
+                merged?.hireDateYMD ||
+                merged?.startDateYMD ||
+                merged?.companyStartDateYMD ||
+                parseAnyToYMD(
+                  merged?.hireDate || merged?.startDate || merged?.companyStartDate || ymdHIRE || ""
+                );
+            }
+          } catch { /* silencioso */ }
+        }
+
+        const mdyDob = ymdToMDY(ymdDOB) || "";
+        const mdyHire = ymdToMDY(ymdHIRE) || "";
+
         if (!alive) return;
-        setLoadError('Could not load your profile from the server. Showing local data.');
+        setDob(mdyDob);
+        setHire(mdyHire);
+        setInitialDob(mdyDob);
+        setInitialHire(mdyHire);
       } finally {
-        if (alive) setLoadingUser(false);
+        if (alive) setLoading(false);
       }
-    })();
+    }
 
+    boot();
     return () => { alive = false; };
-  }, [userId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const mergeIntoLocalStores = (patch) => {
+  // auto-clear mensagens
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(""), 3500);
+    return () => clearTimeout(t);
+  }, [msg]);
+
+  function patchStoredUser(patch) {
     try {
-      const raw = localStorage.getItem('current_user_v1');
-      const obj = raw ? JSON.parse(raw) : {};
-      const updated = { ...obj, ...patch };
-      localStorage.setItem('current_user_v1', JSON.stringify(updated));
-      const arr = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-      const idx = Array.isArray(arr) ? arr.findIndex(u => (u.id || u._id) === (patch.id || updated.id)) : -1;
-      if (idx >= 0) {
-        arr[idx] = { ...arr[idx], ...patch };
-        localStorage.setItem(USERS_KEY, JSON.stringify(arr));
-      }
+      const raw = localStorage.getItem(CURRENT_USER_KEY);
+      const base = raw ? JSON.parse(raw) : {};
+      const merged = { ...base, ...patch };
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(merged));
+      saveStoredUser?.(merged);
     } catch {}
-  };
+  }
 
-  /* ===== Avatar ===== */
-  const onPickAvatar = async (e) => {
-    const file = e.target.files?.[0];
+  // avatar: upload
+  async function onPickAvatar(ev) {
+    const file = ev.target.files?.[0];
+    try { ev.target.value = ""; } catch {}
     if (!file || !userId) return;
-    setUploadMsg('');
-    setUploadingAvatar(true);
+
+    setUploading(true);
+    setMsg("");
     try {
-      const data = await uploadAvatar(userId, file); // { avatarUrl }
-      const urlAbs = absolutize(data?.avatarUrl || '');
-      if (urlAbs) setAvatarUrl(urlAbs);
+      const { avatarUrl: url } = await uploadAvatar(userId, file);
+      const abs = absolutize(url);
+      setAvatarUrl(abs || "");
+      setUser((u) => ({ ...(u || {}), avatarUrl: abs }));
+      patchStoredUser({ avatarUrl: abs });
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        try { localStorage.setItem(avatarKey, reader.result); } catch {}
-        setAvatar(String(reader.result));
-      };
-      reader.readAsDataURL(file);
+      try {
+        const updated = await updateUser(userId, { avatarUrl: abs });
+        setUser((u) => ({ ...(u || {}), ...(updated || {}) }));
+        patchStoredUser({ avatarUrl: updated?.avatarUrl || abs });
+        onUserUpdate?.({ id: userId, avatarUrl: updated?.avatarUrl || abs, _patch: true });
+      } catch {}
 
-      const merged = { ...(serverUser || {}), avatarUrl: urlAbs };
-      setServerUser(merged);
-
-      // Patch mínimo pro pai (evita reavaliar rota/role)
-      try { onUserUpdateRef.current?.({ id: userId, avatarUrl: urlAbs, _patch: true }); } catch {}
-
-      setUploadMsg('Profile photo updated.');
+      setMsg("Profile photo updated.");
     } catch {
-      setUploadMsg('Upload failed. Using local image as fallback.');
-      const reader = new FileReader();
-      reader.onload = () => {
-        try { localStorage.setItem(avatarKey, reader.result); } catch {}
-        setAvatar(String(reader.result));
-      };
-      reader.readAsDataURL(file);
+      setMsg("Upload failed.");
     } finally {
-      setUploadingAvatar(false);
-      try { e.target.value = ''; } catch {}
+      setUploading(false);
     }
-  };
+  }
 
-  const removeAvatar = async () => {
+  // avatar: remover
+  async function onRemoveAvatar() {
     if (!userId) return;
-    setUploadMsg('');    
-
-    // 1) tenta remover no backend usando a rota robusta
-    let removedOnServer = false;
+    setUploading(true);
+    setMsg("");
     try {
-      const r = await deleteAvatar(userId);
-      removedOnServer = !!r?.ok;
-    } catch {
-      removedOnServer = false;
-    }
-
-    // 2) se o backend não tiver rota, força limpar campos como fallback
-    if (!removedOnServer) {
+      await deleteAvatar(userId);
+      setAvatarUrl("");
+      setUser((u) => ({ ...(u || {}), avatarUrl: "" }));
+      patchStoredUser({ avatarUrl: "" });
+      onUserUpdate?.({ id: userId, avatarUrl: "", _patch: true });
       try {
         await updateUser(userId, {
-          avatarUrl: '',
-          photoUrl: '',
-          imageUrl: '',
-          avatar: null,
-          photo: null,
-          image: null,
+          avatarUrl: "", photoUrl: "", imageUrl: "",
+          avatar: null, photo: null, image: null,
         });
-      } catch { /* offline/sem rota: segue para limpeza local */ }
+      } catch {}
+      setMsg("Avatar removed.");
+    } catch {
+      setMsg("Could not remove avatar, but local preview was cleared.");
+    } finally {
+      setUploading(false);
     }
+  }
 
-    // 3) limpeza local (preview + caches)
-    try { localStorage.removeItem(avatarKey); } catch {}
-    setAvatar('');
-    setAvatarUrl('');
-
-    // 4) atualiza estados e storages
-    setServerUser(prev => prev ? { ...prev, avatarUrl: '' } : prev);
-    mergeIntoLocalStores({ id: userId, avatarUrl: '' });
-
-    // 5) patch mínimo pro App (não derruba role/rota)
-    try { onUserUpdateRef.current?.({ id: userId, avatarUrl: '', _patch: true }); } catch {}
-
-    setUploadMsg('Avatar removed.');
-  };
-
-  // Mostrar "Remove" se houver avatar de qualquer origem
-  const showRemove = useMemo(() => Boolean(avatarUrl || avatar), [avatarUrl, avatar]);
-
-  const effectiveAvatar = (avatarUrl ? absolutize(avatarUrl) : '') || avatar || DEFAULT_AVATAR_URL;
-
-  /* ===== Datas ===== */
-  const [isEditingHire, setIsEditingHire] = useState(false);
-
-  const onSaveDob = async () => {
+  // salvar DOB (envia YYYY-MM-DD string pura; sem UTC)
+  async function onSaveDob() {
     if (!userId) return;
-    setSaveMsg('');
-    setSavingDob(true);
+    const mdy = dob.trim();
+    if (!isValidMDY(mdy)) { setMsg("Use MM/DD/YYYY for DOB."); return; }
+    const ymd = mdyToYMD(mdy);
+    if (dob === initialDob) { setMsg("No changes to save."); return; }
+
+    setSavingDob(true); setMsg("");
     try {
-      const payloadISO = dob ? ymdToISO(dob) : '';
-      const payload = { birthday: payloadISO, dob: payloadISO };
-      const updated = await updateUser(userId, payload);
-      setServerUser(prev => ({ ...(prev || {}), ...updated }));
-      mergeIntoLocalStores({ id: userId, ...payload });
-      // patch mínimo no pai (sem forçar reavaliação de role/route)
-      try { onUserUpdateRef.current?.({ id: userId, ...payload, _patch: true }); } catch {}
-      setSaveMsg('Birth date saved.');
-    } catch {
-      const iso = dob ? ymdToISO(dob) : '';
-      mergeIntoLocalStores({ id: userId, birthday: iso, dob: iso });
-      setSaveMsg('Saved locally (offline).');
-    } finally { setSavingDob(false); }
-  };
+      const updated = await updateUser(userId, {
+        // backend normaliza dob → birthday e aceita *_YMD (virtuais)
+        birthday: ymd, dob: ymd, birthdayYMD: ymd, dobYMD: ymd,
+      });
 
-  const onSaveHireDate = async () => {
-    if (!userId || !hireDate) return;
-    setSaveMsg('');
-    setSavingHire(true);
+      const newYMD = updated?.birthdayYMD || parseAnyToYMD(updated?.birthday) || ymd;
+      const newMDY = ymdToMDY(newYMD) || mdy;
+
+      setDob(newMDY);
+      setInitialDob(newMDY);
+      setUser((u) => ({ ...(u || {}), ...(updated || {}), birthday: newYMD, birthdayYMD: newYMD }));
+      patchStoredUser({ birthday: newYMD, birthdayYMD: newYMD, dob: newYMD, dobYMD: newYMD });
+      onUserUpdate?.({ id: userId, birthday: newYMD, _patch: true });
+
+      setMsg("Birth date saved.");
+    } catch {
+      patchStoredUser({ birthday: ymd, birthdayYMD: ymd, dob: ymd, dobYMD: ymd });
+      setInitialDob(mdy);
+      setMsg("Saved locally (offline).");
+    } finally {
+      setSavingDob(false);
+    }
+  }
+
+  // salvar Company Start (YYYY-MM-DD string pura)
+  async function onSaveHire() {
+    if (!userId) return;
+    const mdy = hire.trim();
+    if (!isValidMDY(mdy)) { setMsg("Use MM/DD/YYYY for Company Start."); return; }
+    const ymd = mdyToYMD(mdy);
+    if (hire === initialHire) { setMsg("No changes to save."); return; }
+
+    setSavingHire(true); setMsg("");
     try {
-      const iso = ymdToISO(hireDate);
-      const payload = { hireDate: iso, startDate: iso, companyStartDate: iso };
-      const updated = await updateUser(userId, payload);
-      setServerUser(prev => ({ ...(prev || {}), ...updated }));
-      mergeIntoLocalStores({ id: userId, ...payload });
-      try { onUserUpdateRef.current?.({ id: userId, ...payload, _patch: true }); } catch {}
-      setIsEditingHire(false);
-      setSaveMsg('Start date saved.');
+      const updated = await updateUser(userId, {
+        hireDate: ymd, startDate: ymd, companyStartDate: ymd,
+        hireDateYMD: ymd, startDateYMD: ymd, companyStartDateYMD: ymd,
+      });
+
+      const newYMD =
+        updated?.hireDateYMD ||
+        updated?.startDateYMD ||
+        updated?.companyStartDateYMD ||
+        parseAnyToYMD(updated?.hireDate || updated?.startDate || updated?.companyStartDate) ||
+        ymd;
+
+      const newMDY = ymdToMDY(newYMD) || mdy;
+
+      setHire(newMDY);
+      setInitialHire(newMDY);
+
+      setUser((u) => ({
+        ...(u || {}),
+        ...(updated || {}),
+        hireDate: newYMD,
+        startDate: newYMD,
+        companyStartDate: newYMD,
+        hireDateYMD: newYMD,
+        startDateYMD: newYMD,
+        companyStartDateYMD: newYMD,
+      }));
+
+      patchStoredUser({
+        hireDate: newYMD, startDate: newYMD, companyStartDate: newYMD,
+        hireDateYMD: newYMD, startDateYMD: newYMD, companyStartDateYMD: newYMD,
+      });
+      onUserUpdate?.({ id: userId, hireDate: newYMD, startDate: newYMD, companyStartDate: newYMD, _patch: true });
+
+      setMsg("Company start date saved.");
     } catch {
-      const iso = ymdToISO(hireDate);
-      mergeIntoLocalStores({ id: userId, hireDate: iso, startDate: iso, companyStartDate: iso });
-      setIsEditingHire(false);
-      setSaveMsg('Saved locally (offline).');
-    } finally { setSavingHire(false); }
-  };
+      patchStoredUser({ hireDate: ymd, startDate: ymd, companyStartDate: ymd });
+      setInitialHire(mdy);
+      setMsg("Saved locally (offline).");
+    } finally {
+      setSavingHire(false);
+    }
+  }
 
-  const enableFaceOnThisDevice  = () => { try { localStorage.setItem(faceKey, '1'); } catch {}; setFaceEnabled(true); };
-  const disableFaceOnThisDevice = () => { try { localStorage.removeItem(faceKey); } catch {}; setFaceEnabled(false); };
+  const name = toTitle(user?.fullName || propUser?.fullName || "");
+  const email = user?.email || propUser?.email || "";
+  const role = toTitle(user?.role || propUser?.role || "");
+  const dept = toTitle(user?.department || propUser?.department || "");
+  const initials = useMemo(() => initialsFrom(name), [name]);
+  const showRemove = Boolean(avatarUrl);
 
-  const Row = ({ label, children, value }) => (
-    <div className="pc-row profile-row">
-      <div className="pc-label" style={{ fontWeight: 600 }}>{label}</div>
-      <div className="pc-value">{children ?? value ?? '—'}</div>
-    </div>
-  );
-
-  const initials = useMemo(() => {
-    const n = displayName || String(currentUser?.fullName || '').trim();
-    if (!n) return 'U';
-    const parts = n.split(/\s+/).slice(0, 2);
-    return parts.map(p => p[0]?.toUpperCase()).join('');
-  }, [displayName, currentUser]);
+  const dobDirty = dob !== initialDob;
+  const hireDirty = hire !== initialHire;
 
   return (
-    <div className="partner-page page-profile">
-      <div className="p-card profile-card">
-
-        {/* Header */}
+    <div className="page-profile">
+      <div
+        className="p-card profile-card"
+        onMouseDownCapture={stopBubble}
+        onTouchStartCapture={stopBubble}
+      >
+        {/* Header / Avatar */}
         <div className="profile-header">
           <div className="profile-avatar">
-            {effectiveAvatar ? (
+            {avatarUrl ? (
               <img
-                key={effectiveAvatar}
-                src={effectiveAvatar}
+                src={avatarUrl}
                 alt="Avatar"
                 onError={(e) => {
                   e.currentTarget.onerror = null;
-                  e.currentTarget.src = avatar || DEFAULT_AVATAR_URL;
+                  e.currentTarget.src = DEFAULT_AVATAR;
                 }}
               />
             ) : (
-              <div className="profile-avatar-fallback">{initials}</div>
+              <div className="profile-avatar-fallback" aria-hidden>{initials}</div>
             )}
           </div>
           <div className="profile-avatar-actions">
-            <label
-              className="btn btn--outline btn--sm profile-upload"
-              onClick={(ev) => ev.stopPropagation()}
-              onPointerDownCapture={(ev) => ev.stopPropagation()}
-            >
-              {uploadingAvatar ? 'Uploading…' : 'Change Avatar'}
+            <label className="btn btn--outline btn--sm profile-upload">
+              {uploading ? "Working…" : "Change Avatar"}
               <input
                 type="file"
                 accept="image/*"
                 onChange={onPickAvatar}
-                disabled={uploadingAvatar}
-                onClick={(ev) => ev.stopPropagation()}
-                onPointerDownCapture={(ev) => ev.stopPropagation()}
+                disabled={uploading}
               />
             </label>
             {showRemove && (
               <button
                 type="button"
                 className="btn btn--danger btn--sm"
-                onClick={removeAvatar}
-                disabled={uploadingAvatar}
-                onClickCapture={(ev) => ev.stopPropagation()}
+                onClick={onRemoveAvatar}
+                disabled={uploading}
               >
                 Remove
               </button>
             )}
-            {uploadMsg && <span className="profile-hint" style={{ marginLeft:8 }}>{uploadMsg}</span>}
+            {msg && (
+              <span className="profile-hint" role="status" aria-live="polite" style={{ marginLeft: 8 }}>
+                {msg}
+              </span>
+            )}
           </div>
         </div>
 
-        {loadingUser && <div className="profile-hint" style={{ marginTop:8 }}>Loading profile…</div>}
-        {loadError && <div className="profile-hint" style={{ marginTop:8, color:'#B45309' }}>{loadError}</div>}
-
-        {/* Campos */}
+        {/* Info */}
         <div className="profile-rows">
-          <Row label="Name"       value={displayName} />
-          <Row label="Email"      value={serverUser?.email ?? currentUser?.email} />
-          <Row label="Role"       value={toTitleCase(serverUser?.role ?? currentUser?.role)} />
-          <Row label="Department" value={toTitleCase(serverUser?.department ?? currentUser?.department)} />
-
-          <div className="pc-row profile-row">
-            <div className="pc-label" style={{ fontWeight: 600 }}>DOB</div>
-            <div className="pc-value profile-edit">
-              <input
-                type="date"
-                value={dob}
-                onChange={(e)=>setDob(e.target.value)}
-                className="profile-input"
-                disabled={savingDob}
-                onPointerDownCapture={(ev)=>ev.stopPropagation()}
-              />
-              <button
-                type="button"
-                className="btn btn--primary btn--sm"
-                onClick={onSaveDob}
-                disabled={savingDob}
-              >
-                {savingDob ? 'Saving…' : 'Save'}
-              </button>
-              <span className="profile-hint">{dob ? `Current: ${formatDateNice(dob)}` : 'No date set'}</span>
-            </div>
+          <div className="profile-row">
+            <div className="pc-label">Name</div>
+            <div className="pc-value">{name || "—"}</div>
+          </div>
+          <div className="profile-row">
+            <div className="pc-label">Email</div>
+            <div className="pc-value">{email || "—"}</div>
+          </div>
+          <div className="profile-row">
+            <div className="pc-label">Role</div>
+            <div className="pc-value">{role || "—"}</div>
+          </div>
+          <div className="profile-row">
+            <div className="pc-label">Department</div>
+            <div className="pc-value">{dept || "—"}</div>
           </div>
 
-          <div className="pc-row profile-row">
-            <div className="pc-label" style={{ fontWeight: 600 }}>Company Start Date</div>
-            <div className="pc-value profile-edit">
-              {hireDate && !isEditingHire ? (
-                <>
-                  <span className="profile-readonly">{formatDateNice(hireDate)}</span>
-                  <button
-                    type="button"
-                    className="btn btn--outline btn--sm"
-                    onClick={()=>setIsEditingHire(true)}
-                    style={{ marginLeft:8 }}
-                  >
-                    Edit
-                  </button>
-                </>
-              ) : !isEditingHire ? (
+          {/* DOB (MM/DD/YYYY) */}
+          <div className="profile-row">
+            <div className="pc-label">DOB</div>
+            <div className="pc-value">
+              <div className="profile-edit">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="MM/DD/YYYY"
+                  className="profile-input"
+                  value={dob}
+                  onChange={(e) => setDob(maskMDY(e.target.value))}
+                  onKeyDown={(e) => { if (e.key === "Enter" && dobDirty && !savingDob && !loading) onSaveDob(); }}
+                  maxLength={10}
+                  autoComplete="bday"
+                />
                 <button
-                  type="button"
-                  className="btn btn--outline btn--sm"
-                  onClick={()=>setIsEditingHire(true)}
+                  className="btn btn--primary btn--sm"
+                  onClick={onSaveDob}
+                  disabled={savingDob || loading || !dobDirty}
+                  title={dobDirty ? "Save DOB" : "No changes"}
                 >
-                  Add
+                  {savingDob ? "Saving…" : "Save"}
                 </button>
-              ) : (
-                <>
-                  <input
-                    type="date"
-                    value={hireDate}
-                    onChange={(e)=>setHireDate(e.target.value)}
-                    className="profile-input"
-                    disabled={savingHire}
-                    onPointerDownCapture={(ev)=>ev.stopPropagation()}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm"
-                    onClick={onSaveHireDate}
-                    disabled={savingHire}
-                  >
-                    {savingHire ? 'Saving…' : 'Save'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--outline btn--sm"
-                    onClick={()=>{ 
-                      setHireDate(toYMD(serverUser?.hireDate || serverUser?.startDate || serverUser?.companyStartDate || ''));
-                      setIsEditingHire(false);
-                    }}
-                    disabled={savingHire}
-                  >
-                    Cancel
-                  </button>
-                </>
-              )}
+                <span className="profile-hint">Current: {dob || "—"}</span>
+              </div>
             </div>
           </div>
 
-          {saveMsg && <div className="profile-hint" style={{ marginTop:4 }}>{saveMsg}</div>}
-        </div>
-
-        {/* Passkey */}
-        <div className="profile-section">
-          <div className="section-title">Face ID / Passkey</div>
-          <div className="profile-rows">
-            <Row label="This Device">
-              <div className="profile-edit" style={{ alignItems:'center' }}>
-                {faceEnabled ? (
-                  <>
-                    <span className="profile-readonly">Enabled</span>
-                    <button
-                      type="button"
-                      className="btn btn--outline btn--sm"
-                      onClick={disableFaceOnThisDevice}
-                    >
-                      Disable
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="btn btn--primary btn--sm"
-                      onClick={enableFaceOnThisDevice}
-                      disabled={faceSupport === false}
-                    >
-                      Enable
-                    </button>
-                    <span className="profile-hint">
-                      {faceSupport === false
-                        ? 'Biometric/passkey not available on this browser.'
-                        : 'Stores a quick-login preference on this device.'}
-                    </span>
-                  </>
-                )}
+          {/* Company Start (MM/DD/YYYY) */}
+          <div className="profile-row">
+            <div className="pc-label">Company Start Date</div>
+            <div className="pc-value">
+              <div className="profile-edit">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="MM/DD/YYYY"
+                  className="profile-input"
+                  value={hire}
+                  onChange={(e) => setHire(maskMDY(e.target.value))}
+                  onKeyDown={(e) => { if (e.key === "Enter" && hireDirty && !savingHire && !loading) onSaveHire(); }}
+                  maxLength={10}
+                  autoComplete="off"
+                />
+                <button
+                  className="btn btn--primary btn--sm"
+                  onClick={onSaveHire}
+                  disabled={savingHire || loading || !hireDirty}
+                  title={hireDirty ? "Save Company Start Date" : "No changes"}
+                >
+                  {savingHire ? "Saving…" : "Save"}
+                </button>
+                <span className="profile-hint">Current: {hire || "—"}</span>
               </div>
-            </Row>
+            </div>
           </div>
         </div>
 
+        {loading && (
+          <div className="profile-hint" role="status" aria-live="polite">
+            Loading profile…
+          </div>
+        )}
       </div>
     </div>
   );

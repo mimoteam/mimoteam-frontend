@@ -21,6 +21,8 @@ import * as servicesApi from '../api/services';
 import * as paymentsApi from '../api/payments';
 import * as usersApi from '../api/users';
 import * as costsApi from '../api/costs';
+import * as tasksApi from '../api/tasks';
+import * as handoverApi from '../api/handover';
 
 const listServicesFn = servicesApi.listServices || servicesApi.fetchServices;
 const listPaymentsFn = paymentsApi.listPayments || paymentsApi.fetchPayments;
@@ -225,59 +227,152 @@ const Dashboard = ({ currentUserName = 'Admin User', currentUserRole = 'Administ
     return m;
   }, [users]);
 
-  /* ====== TASKS (paginação + auto-remove) ================= */
-  const [tasks, setTasks] = useState(() => {
-    const raw = localStorage.getItem(TASKS_KEY);
-    return raw ? safeParse(raw, []) : [
-      { id: 1, text: 'Review pending services', completed: false },
-      { id: 2, text: 'Process weekly payments', completed: true },
-      { id: 3, text: 'Update cost structures', completed: false }
-    ];
-  });
+  /* ====== TASKS (compartilhadas) ====== */
+  const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState('');
   const [taskPage, setTaskPage] = useState(1);
   const TASKS_PER_PAGE = 5;
   const [completingTaskId, setCompletingTaskId] = useState(null);
-  useEffect(() => { try { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); } catch {} }, [tasks]);
-  useEffect(() => { const totalPages = Math.max(1, Math.ceil(tasks.length / TASKS_PER_PAGE)); setTaskPage(p => Math.min(p, totalPages)); }, [tasks]);
-  const addTask = () => { if (!newTask.trim()) return; setTasks(prev => [{ id: Date.now(), text: newTask.trim(), completed: false }, ...prev]); setNewTask(''); setTaskPage(1); };
-  const toggleTask = (id) => { setCompletingTaskId(id); setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: true } : t)); setTimeout(() => { setTasks(prev => prev.filter(t => t.id !== id)); setCompletingTaskId(null); }, 320); };
-  const totalTaskPages = Math.max(1, Math.ceil(tasks.length / TASKS_PER_PAGE));
-  const paginatedTasks = useMemo(() => { const start = (taskPage - 1) * TASKS_PER_PAGE; return tasks.slice(start, start + TASKS_PER_PAGE); }, [tasks, taskPage]);
 
-  /* ====== HANDOVER NOTES (digital notepad) ============================ */
-  const [notes, setNotes] = useState(() => {
-    const raw = localStorage.getItem(HANDOVER_KEY);
-    const arr = raw ? safeParse(raw, []) : [];
-    return arr.map(n => ({ ...n, comments: Array.isArray(n.comments) ? n.comments : [] }));
-  });
+  // Carrega tasks do backend; fallback para LS
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = await tasksApi.listTasks({ pageSize: 200, includeTotal: 1 });
+        setTasks(items);
+      } catch (e) {
+        console.warn('[Tasks] usando fallback localStorage', e);
+        const raw = localStorage.getItem(TASKS_KEY);
+        setTasks(raw ? safeParse(raw, []) : [
+          { id: 1, text: 'Review pending services', completed: false },
+          { id: 2, text: 'Process weekly payments', completed: true },
+          { id: 3, text: 'Update cost structures', completed: false }
+        ]);
+      }
+    })();
+  }, []);
+
+  // Persistência local para fallback offline
+  useEffect(() => { try { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); } catch {} }, [tasks]);
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(tasks.length / TASKS_PER_PAGE));
+    setTaskPage(p => Math.min(p, totalPages));
+  }, [tasks]);
+  const totalTaskPages = Math.max(1, Math.ceil(tasks.length / TASKS_PER_PAGE));
+  const paginatedTasks = useMemo(() => {
+    const start = (taskPage - 1) * TASKS_PER_PAGE;
+    return tasks.slice(start, start + TASKS_PER_PAGE);
+  }, [tasks, taskPage]);
+
+  const addTask = async () => {
+    if (!newTask.trim()) return;
+    try {
+      const created = await tasksApi.createTask({ text: newTask.trim() });
+      setTasks(prev => [created, ...prev]);
+      setNewTask('');
+      setTaskPage(1);
+    } catch (e) {
+      // fallback local
+      const t = { id: Date.now(), text: newTask.trim(), completed: false };
+      setTasks(prev => [t, ...prev]);
+      setNewTask('');
+      setTaskPage(1);
+    }
+  };
+
+  const toggleTask = async (id) => {
+    setCompletingTaskId(id);
+    try {
+      await tasksApi.completeTask(id, true);
+      setTimeout(() => {
+        setTasks(prev => prev.filter(t => String(t.id) !== String(id)));
+        setCompletingTaskId(null);
+      }, 320);
+    } catch (e) {
+      // fallback local: marcar como done e remover
+      setTimeout(() => {
+        setTasks(prev => prev.filter(t => t.id !== id));
+        setCompletingTaskId(null);
+      }, 320);
+    }
+  };
+
+  /* ====== HANDOVER NOTES (compartilhadas) ============================ */
+  const [notes, setNotes] = useState([]);
   const [filters, setFilters] = useState({ type: '', tag: '', search: '' });
   const [form, setForm] = useState({ type: '', tag: '', body: '' });
   const [commentInputs, setCommentInputs] = useState({});
+
+  // Carrega notas do backend; fallback para LS
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = await handoverApi.listNotes({ pageSize: 200, includeTotal: 1 });
+        setNotes(items);
+      } catch (e) {
+        console.warn('[Handover] usando fallback localStorage', e);
+        const raw = localStorage.getItem(HANDOVER_KEY);
+        const arr = raw ? safeParse(raw, []) : [];
+        setNotes(arr.map(n => ({ ...n, comments: Array.isArray(n.comments) ? n.comments : [] })));
+      }
+    })();
+  }, []);
+
+  // Persistência local para fallback offline
   useEffect(() => { try { localStorage.setItem(HANDOVER_KEY, JSON.stringify(notes)); } catch {} }, [notes]);
 
-  const addNote = () => {
+  const addNote = async () => {
     if (!form.type || !form.tag || !form.body.trim()) return;
-    const n = {
-      id: newId('note'),
-      type: form.type,
-      tag: form.tag,
-      body: form.body.trim(),
-      createdAt: new Date().toISOString(),
-      author: `${currentUserName} • ${currentUserRole}`,
-      comments: []
-    };
-    setNotes(prev => [n, ...prev]);
-    setForm({ type:'', tag:'', body:'' });
-    setNotePage(1);
+    try {
+      const created = await handoverApi.createNote({ type: form.type, tag: form.tag, body: form.body.trim() });
+      setNotes(prev => [created, ...prev]);
+      setForm({ type:'', tag:'', body:'' });
+      setNotePage(1);
+    } catch (e) {
+      // fallback local
+      const n = {
+        id: newId('note'),
+        type: form.type,
+        tag: form.tag,
+        body: form.body.trim(),
+        createdAt: new Date().toISOString(),
+        author: `${currentUserName} • ${currentUserRole}`,
+        comments: []
+      };
+      setNotes(prev => [n, ...prev]);
+      setForm({ type:'', tag:'', body:'' });
+      setNotePage(1);
+    }
   };
-  const removeNote = (id) => setNotes(prev => prev.filter(n => n.id !== id));
-  const addComment = (noteId) => {
+
+  const removeNote = async (id) => {
+    try {
+      await handoverApi.deleteNote(id);
+      setNotes(prev => prev.filter(n => String(n.id) !== String(id)));
+    } catch (e) {
+      // fallback local
+      setNotes(prev => prev.filter(n => n.id !== id));
+    }
+  };
+
+  const addComment = async (noteId) => {
     const text = (commentInputs[noteId] || '').trim();
     if (!text) return;
-    const comment = { id: newId('cmt'), body: text, createdAt: new Date().toISOString(), author: `${currentUserName} • ${currentUserRole}` };
-    setNotes(prev => prev.map(n => n.id === noteId ? { ...n, comments: [...(n.comments||[]), comment] } : n));
-    setCommentInputs(prev => ({ ...prev, [noteId]: '' }));
+    try {
+      const updated = await handoverApi.addComment(noteId, { body: text });
+      if (updated?.comments) {
+        setNotes(prev => prev.map(n => n.id === noteId ? updated : n));
+      } else {
+        const cmt = { id: newId('cmt'), body: text, createdAt: new Date().toISOString(), author: `${currentUserName} • ${currentUserRole}` };
+        setNotes(prev => prev.map(n => n.id === noteId ? { ...n, comments: [...(n.comments||[]), cmt] } : n));
+      }
+      setCommentInputs(prev => ({ ...prev, [noteId]: '' }));
+    } catch (e) {
+      // fallback local
+      const cmt = { id: newId('cmt'), body: text, createdAt: new Date().toISOString(), author: `${currentUserName} • ${currentUserRole}` };
+      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, comments: [...(n.comments||[]), cmt] } : n));
+      setCommentInputs(prev => ({ ...prev, [noteId]: '' }));
+    }
   };
 
   const filteredNotes = useMemo(() => {
@@ -287,8 +382,8 @@ const Dashboard = ({ currentUserName = 'Admin User', currentUserRole = 'Administ
     if (filters.search.trim()) {
       const q = filters.search.trim().toLowerCase();
       arr = arr.filter(n =>
-        n.body.toLowerCase().includes(q) ||
-        (n.comments||[]).some(c => c.body.toLowerCase().includes(q))
+        (n.body || '').toLowerCase().includes(q) ||
+        (n.comments||[]).some(c => (c.body || '').toLowerCase().includes(q))
       );
     }
     return arr;
@@ -298,8 +393,17 @@ const Dashboard = ({ currentUserName = 'Admin User', currentUserRole = 'Administ
   const [notePage, setNotePage] = useState(1);
   const totalNotePages = Math.max(1, Math.ceil(filteredNotes.length / NOTES_PER_PAGE));
   useEffect(() => { setNotePage(p => Math.min(p, totalNotePages)); }, [totalNotePages]);
-  const paginatedNotes = useMemo(() => { const start = (notePage - 1) * NOTES_PER_PAGE; return filteredNotes.slice(start, start + NOTES_PER_PAGE); }, [filteredNotes, notePage]);
-  const pageRange = (cur, total, max = 5) => { const half = Math.floor(max / 2); let start = Math.max(1, cur - half); let end = Math.min(total, start + max - 1); start = Math.max(1, end - max + 1); return Array.from({ length: end - start + 1 }, (_, i) => start + i); };
+  const paginatedNotes = useMemo(() => {
+    const start = (notePage - 1) * NOTES_PER_PAGE;
+    return filteredNotes.slice(start, start + NOTES_PER_PAGE);
+  }, [filteredNotes, notePage]);
+  const pageRange = (cur, total, max = 5) => {
+    const half = Math.floor(max / 2);
+    let start = Math.max(1, cur - half);
+    let end = Math.min(total, start + max - 1);
+    start = Math.max(1, end - max + 1);
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  };
 
   /* ====== DERIVED METRICS ============================================= */
   const currentWeek = useMemo(() => getPaymentWeek(new Date()), []);
@@ -599,7 +703,7 @@ const Dashboard = ({ currentUserName = 'Admin User', currentUserRole = 'Administ
                   return (
                     <div key={n.id} className="tr">
                       <div className="td">{dt.toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' })}</div>
-                      <div className="td">{n.author}</div>
+                      <div className="td">{n.author || n.authorName || ''}</div>
 
                       {/* CONTENT + COMMENTS */}
                       <div className="td content-td">
@@ -631,7 +735,7 @@ const Dashboard = ({ currentUserName = 'Admin User', currentUserRole = 'Administ
                               {comments.map(c => (
                                 <div key={c.id} className="handover-comment">
                                   <div className="handover-comment-meta">
-                                    {new Date(c.createdAt).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' })} • {c.author}
+                                    {new Date(c.createdAt).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' })} • {c.author || c.authorName || ''}
                                   </div>
                                   <div>{c.body}</div>
                                 </div>

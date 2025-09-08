@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: white;
+  background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 14px;
   padding: 12px 14px;
@@ -34,13 +34,11 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
-  background: white;
+  background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 10px;
 }
-
-/* linha 1: filtros (uma linha só) */
 .filters-row {
   display: grid;
   grid-template-columns: 260px 200px 200px 1fr;
@@ -62,8 +60,6 @@
   background: #fff;
   box-shadow: 0 2px 10px rgba(17,24,39,0.03) inset;
 }
-
-/* linha 2: ações compactas */
 .actions-row {
   display: grid;
   grid-template-columns: 1fr auto auto auto;
@@ -89,12 +85,12 @@
 }
 .assign-wrap select {
   border: 1px solid #e5e7eb;
-  background: white;
+  background: #fff;
   border-radius: 10px;
   padding: 8px 10px;
 }
 
-/* botões padrão */
+/* ====== BUTTONS ========================================================= */
 .btn {
   border-radius: 10px;
   padding: 10px 12px;
@@ -109,18 +105,18 @@
 .btn--sm { height: 30px; padding: 6px 8px; }
 .btn--primary {
   background: #111827;
-  color: white;
+  color: #fff;
   border-color: #111827;
   box-shadow: 0 8px 22px rgba(17,24,39,0.18);
 }
 .btn--primary:disabled { opacity: .6; cursor: not-allowed; }
 .btn--outline {
-  background: white;
+  background: #fff;
   border-color: #e5e7eb;
   color: #111827;
 }
 .btn--danger {
-  background: white;
+  background: #fff;
   border-color: #fecaca;
   color: #b91c1c;
 }
@@ -128,24 +124,18 @@
 /* ====== CARDS =========================================================== */
 .selection-card,
 .payments-list {
-  background: white;
+  background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 12px;
   box-shadow: 0 8px 20px rgba(17,24,39,0.05);
 }
-
 .selection-header,
 .list-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
-}
-.sel-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 /* ====== TABLES (BASE) =================================================== */
@@ -155,16 +145,12 @@
   border-radius: 12px;
   overflow: hidden;
 }
-
-/* Cabeçalho visual */
 .table .thead {
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
   font-weight: 700;
   color: #374151;
 }
-
-/* Células */
 .th, .td {
   padding: 10px 12px;
   border-bottom: 1px solid #f3f4f6;
@@ -173,26 +159,25 @@
   text-overflow: ellipsis;
   box-sizing: border-box;
   line-height: 1.25;
-  min-width: 0; /* permite truncar corretamente */
+  min-width: 0;
 }
 .tbody .tr:last-child .td { border-bottom: none; }
-
 .th.center, .td.center { text-align: center; }
-.th.right, .td.right   { text-align: right; }
+.th.right,  .td.right  { text-align: right; }
 
 /* ====== TABLE: Selection =============================================== */
 .table.table--selection {
   --cols:
-    46px                           /* # */
-    120px                          /* Date */
-    minmax(140px, 200px)           /* Client (menor) */
-    1fr                            /* Service (absorve o espaço restante) */
-    minmax(120px, 180px)           /* Park */
-    minmax(90px, 110px)            /* Guests */
-    minmax(90px, 110px)            /* Hopper */
-    minmax(120px, 140px)           /* Amount */
-    minmax(120px, 140px)           /* Pay Status */
-    minmax(130px, 160px);          /* Assigned Week */
+    46px
+    120px
+    minmax(140px, 200px)
+    1fr
+    minmax(120px, 180px)
+    minmax(90px, 110px)
+    minmax(120px, 220px)  /* Observation com mais fôlego */
+    minmax(120px, 140px)
+    minmax(120px, 140px)
+    minmax(170px, 220px); /* Assigned Week maior para range + key */
 }
 .table.table--selection .thead,
 .table.table--selection .tbody .tr {
@@ -205,13 +190,13 @@
 /* ====== TABLE: Generated Payments ====================================== */
 .table.table--payments{
   --gap: 8px;
-  --col-toggle: 48px;
-  --col-week: minmax(220px, 280px);
-  --col-partner: minmax(200px, 1fr);
+  --col-toggle: 52px;
+  --col-week: minmax(260px, 320px);
+  --col-partner: minmax(220px, 1fr);
   --col-count: 110px;
   --col-total: 140px;
   --col-status: 130px;
-  --col-actions: minmax(260px, 320px);
+  --col-actions: minmax(320px, 1.1fr); /* mais espaço às ações */
 }
 .table.table--payments .thead,
 .table.table--payments .tbody .tr{
@@ -227,15 +212,15 @@
   column-gap: var(--gap);
   align-items: center;
 }
-
-/* evita quebra feia dos botões de Actions */
-.table.table--payments .tbody .tr .td:last-child {
+/* barra de ações sempre bem distribuída */
+.action-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  justify-content: flex-end;
 }
 
-/* O breakdown vira uma “sub-linha” que pega TODAS as colunas */
+/* breakdown ocupa a linha toda */
 .table.table--payments .tbody .tr .payment-breakdown{
   grid-column: 1 / -1;
   margin-top: 8px;
@@ -245,27 +230,23 @@
   padding:12px;
 }
 
-/* ====== TABLE: Breakdown/Receipt (ALINHADO — FINAL) ===================== */
-/* 9 colunas: Client | Date | Service Type | Park | Location | Team | Guests | Hopper | Amount */
+/* ====== TABLE: Breakdown =============================================== */
 .table.table--breakdown .thead,
 .table.table--breakdown .tbody .tr {
   display: grid !important;
   grid-template-columns:
-    minmax(0,1.3fr)  /* Client   */
-    minmax(0,0.9fr)  /* Date     */
-    minmax(0,1.2fr)  /* Service  */
-    minmax(0,0.9fr)  /* Park     */
-    minmax(0,1.1fr)  /* Location */
-    minmax(0,0.6fr)  /* Team     */
-    minmax(0,0.6fr)  /* Guests   */
-    minmax(0,0.6fr)  /* Hopper   */
-    minmax(0,0.9fr); /* Amount   */
+    minmax(0,1.3fr)
+    minmax(0,0.9fr)
+    minmax(0,1.2fr)
+    minmax(0,0.9fr)
+    minmax(0,1.1fr)
+    minmax(0,0.6fr)
+    minmax(0,0.6fr)
+    minmax(0,0.6fr)
+    minmax(0,0.9fr);
   column-gap: 8px !important;
   align-items: center !important;
-  grid-auto-flow: column; /* evita criação de “segunda linha” */
 }
-
-/* Cabeçalho do breakdown — SEM QUEBRA */
 .table.table--breakdown .thead {
   background: #f9fafb;
   border-bottom: 1px dashed #e5e7eb;
@@ -274,21 +255,14 @@
   padding-bottom: 6px;
 }
 .table.table--breakdown .thead .th {
-  display: block !important;          /* sobrepõe .th {display:flex} global */
-  white-space: nowrap !important;     /* não quebrar */
+  display: block !important;
+  white-space: nowrap !important;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0 !important;            /* permite encolher dentro do grid */
+  min-width: 0 !important;
 }
-
-/* Células do breakdown */
-.table.table--breakdown .th,
-.table.table--breakdown .td {
-  padding: 10px 12px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
+.table.table--breakdown .th { font-size:12px; color:#475569; }
+.table.table--breakdown .td { font-size:13px; }
 .table.table--breakdown .td.center { text-align: center; }
 .table.table--breakdown .td.right  { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -297,11 +271,10 @@
   display: inline-block;
   padding: 4px 10px;
   border-radius: 999px;
-  color: white;
+  color: #fff;
   font-size: 12px;
   font-weight: 700;
 }
-
 .wk-chip {
   display: inline-flex;
   align-items: center;
@@ -312,14 +285,6 @@
   border-radius: 999px;
   color: #1e3a8a;
   line-height: 1;
-}
-
-/* ====== LIST HEADER TOOLS =============================================== */
-.list-header .muted {
-  color: #6b7280;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 /* ====== EMPTY STATE ===================================================== */
@@ -351,7 +316,7 @@
   border-radius: 10px;
   padding: 10px;
   min-height: 100px;
-  background: white;
+  background: #fff;
 }
 .edit-actions {
   display: flex;
@@ -360,7 +325,7 @@
   margin-top: 8px;
 }
 
-/* ====== PAGINATION (Payments) =========================================== */
+/* ====== PAGINATION ====================================================== */
 .pagination {
   display: flex; 
   align-items: center; 
@@ -372,20 +337,24 @@
 .pagination-controls { display: flex; align-items: center; gap: 8px; }
 .pg-btn, .pg-num {
   border: 1px solid #e5e7eb; 
-  background: white; 
+  background: #fff; 
   border-radius: 8px;
   padding: 8px 10px; 
   cursor: pointer;
   height: 34px;
 }
 .pg-pages { display: flex; gap: 6px; }
-.pg-num.active { background: #111827; color: white; border-color: #111827; }
+.pg-num.active { background: #111827; color: #fff; border-color: #111827; }
 
-/* ====== EXPAND AREA (recibo) ============================================ */
+/* ====== BREAKDOWN CONTAINER ============================================ */
 .payment-breakdown {
-  background: #fafafa;
-  padding: 10px 12px 14px 52px; /* alinha com a 1ª coluna (toggle) */
-  border-top: 1px solid #f3f4f6;
+  margin-top: 8px;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+  max-height: 360px;
+  overflow: auto;
 }
 .payment-breakdown .receipt-title {
   font-weight: 700; 
@@ -402,13 +371,25 @@
   border-radius: 8px;
   padding: 10px;
   min-height: 70px;
-  background: white;
+  background: #fff;
+}
+
+/* ====== INPUT AMOUNT (Edit lines) ====================================== */
+.amount-input {
+  width: 120px;
+  height: 32px;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  text-align: right;
+  background: #fff;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ====== MISC ============================================================ */
 .icon-btn {
   border: 1px solid #e5e7eb;
-  background: white;
+  background: #fff;
   border-radius: 10px;
   padding: 8px;
   cursor: pointer;
@@ -418,43 +399,11 @@
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ====== RESPONSIVO ====================================================== */
-@media (max-width: 1100px) {
-  .filters-row { grid-template-columns: 1fr 1fr 1fr 1fr; }
-  .actions-row { grid-template-columns: 1fr 1fr 1fr; }
-  .table.table--payments{
-    --col-week: minmax(200px, 260px);
-    --col-actions: minmax(220px, 300px);
-  }
-}
-
-@media (max-width: 800px) {
-  .filters-row { grid-template-columns: 1fr 1fr; }
-  .actions-row { grid-template-columns: 1fr; }
-  .table { overflow-x: auto; }
-  .table.table--payments{
-    --col-toggle: 44px;
-    --col-week: minmax(180px, 220px);
-    --col-partner: minmax(160px, 1fr);
-    --col-count: 90px;
-    --col-total: 110px;
-    --col-status: 100px;
-    --col-actions: minmax(220px, 260px);
-  }
-}
-
-/* ======================== APERFEIÇOAMENTOS ============================= */
 .td.right, .th.right { font-variant-numeric: tabular-nums lining-nums; }
 .table .tbody .tr:nth-child(even) { background: #fcfcfd; }
 .table .tbody .tr .td:last-child .btn { white-space: nowrap; }
 .table .tbody .tr { align-items: center; }
 .table.table--payments .tbody .tr { align-items: flex-start; grid-auto-rows: minmax(44px, auto); }
-
-/* compat + estilo breakdown container */
-.table.table--payments .tbody .tr .payment-breakdown {
-  grid-column: 1 / -1; width: 100%; margin-top: 8px;
-  background: #fafafa; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; box-sizing: border-box;
-}
 
 /* 12) Checkbox centralizado na seleção */
 .table.table--selection .tbody .tr .td:first-child {
@@ -466,64 +415,42 @@
   .th, .td { padding: 8px 10px; }
 }
 
-/* 14) Evita “tremer” quando há truncamento em células longas */
-.table .tbody .tr > .td {
-  min-height: 42px; display: flex; align-items: center;
-}
+/* 14) Evita tremer com truncamento */
+.table .tbody .tr > .td { min-height: 42px; display: flex; align-items: center; }
 
-/* 15) Cabeçalho e corpo com mesma largura de colunas */
-.table.table--selection .thead > div,
-.table.table--selection .tbody .tr > div { min-width: 0; }
-.table.table--payments .thead > div,
-.table.table--payments .tbody .tr > div { min-width: 0; }
-
-/* 16) Foco visível em botões */
-.btn:focus-visible {
-  outline: 2px solid #90D5FF;
-  outline-offset: 2px;
-  transition: outline-color .2s ease;
-}
-
-/* 17) Reforço de alinhamentos específicos */
-.table.table--selection .thead .th:nth-child(8),
-.table.table--selection .tbody .tr  .td:nth-child(8) {
-  text-align: right; justify-content: flex-end; font-variant-numeric: tabular-nums;
-}
-.table.table--selection .thead .th:nth-child(9),
-.table.table--selection .tbody .tr  .td:nth-child(9),
-.table.table--selection .thead .th:nth-child(10),
-.table.table--selection .tbody .tr  .td:nth-child(10) {
-  text-align: center; justify-content: center;
-}
-.table.table--payments .thead .th:nth-child(4),
-.table.table--payments .tbody .tr  .td:nth-child(4) { text-align: center; justify-content: center; }
-.table.table--payments .thead .th:nth-child(5),
-.table.table--payments .tbody .tr  .td:nth-child(5) { text-align: right;  justify-content: flex-end; font-variant-numeric: tabular-nums; }
-.table.table--payments .thead .th:nth-child(6),
-.table.table--payments .tbody .tr  .td:nth-child(6) { text-align: center; justify-content: center; }
-
-/* ====== FLEX-AWARE GLOBAL (mantido) ===================================== */
+/* 15) Força alinhamentos */
 .th { display: flex; align-items: center; justify-content: flex-start; }
 .td { display: flex; align-items: center; justify-content: flex-start; }
 .th.center, .td.center { justify-content: center; text-align: center; }
 .th.right,  .td.right  { justify-content: flex-end; text-align: right; }
 
-/* ====== OVERRIDE ESSENCIAL: cabeçalho do breakdown NÃO usa flex ========= */
-.table.table--breakdown .thead .th {
-  display: block !important;      /* <- impede flex no header */
-  white-space: nowrap !important; /* <- sem quebra dos títulos */
-  min-width: 0 !important;
+/* ====== RESPONSIVO ====================================================== */
+@media (max-width: 1100px) {
+  .filters-row { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .actions-row { grid-template-columns: 1fr 1fr 1fr; }
+  .table.table--payments{
+    --col-week: minmax(220px, 280px);
+    --col-actions: minmax(280px, 1fr);
+  }
+}
+@media (max-width: 800px) {
+  .filters-row { grid-template-columns: 1fr 1fr; }
+  .actions-row { grid-template-columns: 1fr; }
+  .table { overflow-x: auto; }
+  .table.table--payments{
+    --col-toggle: 44px;
+    --col-week: minmax(200px, 240px);
+    --col-partner: minmax(160px, 1fr);
+    --col-count: 90px;
+    --col-total: 110px;
+    --col-status: 110px;
+    --col-actions: minmax(260px, 1fr);
+  }
 }
 
-/* ====== Compact breakdown com scroll interno ============================ */
-.payment-breakdown {
-  margin-top: 8px;
-  border: 1px solid #E2E8F0;
-  border-radius: 12px;
-  background: #fff;
-  padding: 12px;
-  max-height: 360px;
-  overflow: auto;
+/* 16) Foco visível */
+.btn:focus-visible {
+  outline: 2px solid #90D5FF;
+  outline-offset: 2px;
+  transition: outline-color .2s ease;
 }
-.table.table--breakdown .th { font-size:12px; color:#475569; }
-.table.table--breakdown .td { font-size:13px; }

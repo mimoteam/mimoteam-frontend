@@ -1,4 +1,3 @@
-// frontend/src/pages/PartnerCalendar.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Calendar as CalendarIcon,
@@ -9,11 +8,13 @@ import {
   Lock,
   Plus,
   XCircle,
+  AlertCircle,
+  CheckCircle2
 } from "lucide-react";
 import "../styles/PartnerCalendar.css";
 import * as AvApi from "../api/availability";
 
-/** Local storage base key (apenas para compat em cache leve, mas os dados vêm do backend) */
+/** Local storage base key (apenas para compat em cache leve) */
 const CALENDAR_STORE_KEY = "partner_calendar_v1";
 
 /** Helpers */
@@ -81,8 +82,10 @@ function migrateCalendarForUser(userId) {
 export default function PartnerCalendar({ currentUser }) {
   const [baseMonth, setBaseMonth] = useState(monthStart(new Date()));
   const [avail, setAvail] = useState({});         // { 'YYYY-MM-DD': 'busy' | 'unavailable' }
-  const [loaded, setLoaded] = useState(false);
   const [fetching, setFetching] = useState(false);
+
+  // requisições em andamento por dia (evita duplo clique/race)
+  const [pending, setPending] = useState(() => new Set());
 
   // Bulk
   const [showBulk, setShowBulk] = useState(false);
@@ -95,12 +98,24 @@ export default function PartnerCalendar({ currentUser }) {
   // Feedback rápido ao usuário
   const [flash, setFlash] = useState(null); // {type:'ok'|'err', text:string}
 
-  const userId = currentUser?.id || null;
+  // 🔐 partnerId robusto
+  const userId = useMemo(() => {
+    const u = currentUser || {};
+    const id =
+      u.id ||
+      u._id ||
+      u.userId ||
+      (u.user && (u.user.id || u.user._id)) ||
+      (u.profile && (u.profile.id || u.profile._id));
+    const s = String(id || "").trim();
+    return s ? s : null;
+  }, [currentUser]);
+
   const STORE_KEY = userId ? `${CALENDAR_STORE_KEY}_${userId}` : null;
 
   /** Carrega do backend para o mês visível */
   const loadFromServer = async () => {
-    if (!userId) { setAvail({}); setLoaded(true); return; }
+    if (!userId) { setAvail({}); return; }
     const start = monthStart(baseMonth);
     const end = monthEnd(baseMonth);
     const dateFrom = ymd(start);
@@ -121,17 +136,17 @@ export default function PartnerCalendar({ currentUser }) {
       const migrated = migrateCalendarForUser(userId);
       setAvail((migrated && typeof migrated === "object") ? migrated : {});
     } finally {
-      setLoaded(true);
       setFetching(false);
     }
   };
 
-  useEffect(() => { loadFromServer(); }, [userId, baseMonth]);
+  useEffect(() => { loadFromServer(); /* eslint-disable-next-line */ }, [userId, baseMonth]);
 
-  /** Toggle de dia (somente AVAILABLE ⇄ UNAVAILABLE; BUSY é bloqueado pelo admin) */
+  /** Toggle de dia (AVAILABLE ⇄ UNAVAILABLE; BUSY é bloqueado pelo admin) */
   const toggleDay = async (date) => {
     if (!userId) return;
     const k = ymd(date);
+    if (pending.has(k)) return; // já salvando
     const cur = avail[k]; // undefined => available
     if (cur === STATE.BUSY) return; // 🔒 não altera
 
@@ -144,21 +159,44 @@ export default function PartnerCalendar({ currentUser }) {
       else n[k] = STATE.UNAVAILABLE;
       return n;
     });
+    setPending((s) => new Set([...s, k]));
 
     try {
-      await AvApi.setDayAvailability(userId, k, nextState, "partner");
-      setFlash({ type: "ok", text: nextState === STATE.UNAVAILABLE ? "Day blocked." : "Day unblocked." });
-      setTimeout(() => setFlash(null), 2200);
+      const resp = await AvApi.setDayAvailability(userId, k, nextState, "partner");
+      // aplica exatamente o estado retornado pela API
+      setAvail((m) => {
+        const n = { ...m };
+        const st = resp?.state;
+        if (st === STATE.AVAILABLE) delete n[k];
+        else if (st === STATE.UNAVAILABLE) n[k] = STATE.UNAVAILABLE;
+        else if (st === STATE.BUSY) n[k] = STATE.BUSY;
+        return n;
+      });
+
+      if (resp?.unchanged && resp?.state === STATE.BUSY) {
+        setFlash({ type: "err", text: "Date is already booked by admin." });
+      } else {
+        setFlash({ type: "ok", text: nextState === STATE.UNAVAILABLE ? "Day blocked." : "Day unblocked." });
+      }
+      // ressincroniza com o backend
+      await loadFromServer();
     } catch {
+      // rollback
       setAvail((m) => {
         const n = { ...m };
         if (cur) n[k] = cur; else delete n[k];
         return n;
       });
       setFlash({ type: "err", text: "Could not update this day." });
-      setTimeout(() => setFlash(null), 2500);
+    } finally {
+      setPending((s) => {
+        const n = new Set(s); n.delete(k); return n;
+      });
+      window.clearTimeout(toggleDay._t || 0);
+      toggleDay._t = window.setTimeout(() => setFlash(null), 2400);
     }
   };
+  toggleDay._t = 0;
 
   /** Bulk / Smart Rules (sem BUSY; mantém BUSY existentes sem sobrescrever) */
   const applyBulk = async () => {
@@ -169,10 +207,7 @@ export default function PartnerCalendar({ currentUser }) {
 
     setBulkLoading(true);
     try {
-      // se o backend interpretar weekdays vazios como "nada", enviamos explicitamente todos os dias
       const weekdaysArg = bulkWeekdays.size ? Array.from(bulkWeekdays.values()) : [0,1,2,3,4,5,6];
-
-      // alguns backends respondem 204; então sempre vamos ler o estado depois
       await AvApi.bulkSetAvailability({
         partnerId: userId,
         from,
@@ -181,27 +216,18 @@ export default function PartnerCalendar({ currentUser }) {
         state: bulkState,
         actor: "partner",
       });
-
-      // Atualiza imediatamente o mês aberto com o que mudou nesse intervalo
-      const refreshed = await AvApi.getAvailability(userId, ymd(monthStart(baseMonth)), ymd(monthEnd(baseMonth)));
-      const nextMap = {};
-      for (const it of refreshed || []) {
-        if (it?.date && (it.state === "busy" || it.state === "unavailable")) {
-          nextMap[it.date] = it.state;
-        }
-      }
-      setAvail(nextMap);
-
+      await loadFromServer();
       setShowBulk(false);
       setFlash({ type: "ok", text: "Smart rule applied." });
-      setTimeout(() => setFlash(null), 2200);
     } catch {
       setFlash({ type: "err", text: "Could not apply smart rule." });
-      setTimeout(() => setFlash(null), 2500);
     } finally {
       setBulkLoading(false);
+      window.clearTimeout(applyBulk._t || 0);
+      applyBulk._t = window.setTimeout(() => setFlash(null), 2400);
     }
   };
+  applyBulk._t = 0;
 
   const matrix = useMemo(() => buildMonthMatrix(baseMonth), [baseMonth]);
   const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
@@ -240,22 +266,21 @@ export default function PartnerCalendar({ currentUser }) {
         </div>
       </div>
 
-      {/* Feedback (toast simples) */}
+      {/* Toast (alto contraste) */}
       {flash && (
-        <div
-          role="status"
-          className={`cal-flash ${flash.type === "ok" ? "ok" : "err"}`}
-          style={{
-            margin: "8px 0 0",
-            padding: "8px 12px",
-            borderRadius: 8,
-            fontSize: 13,
-            background: flash.type === "ok" ? "rgba(16,185,129,.12)" : "rgba(239,68,68,.10)",
-            border: `1px solid ${flash.type === "ok" ? "rgba(16,185,129,.35)" : "rgba(239,68,68,.35)"}`,
-            color: flash.type === "ok" ? "#065f46" : "#7f1d1d",
-          }}
-        >
-          {flash.text}
+        <div role="alert" className={`cal-toast ${flash.type === "ok" ? "ok" : "err"}`}>
+          <div className="cal-toast-ic">
+            {flash.type === "ok" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+          </div>
+          <div className="cal-toast-text">{flash.text}</div>
+          <button
+            className="cal-toast-close"
+            onClick={() => setFlash(null)}
+            aria-label="Close notification"
+            type="button"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
 
@@ -299,16 +324,19 @@ export default function PartnerCalendar({ currentUser }) {
               const k = c.key;
               const st = avail[k] || STATE.AVAILABLE;
               const Icon = st === STATE.BUSY ? Lock : st === STATE.UNAVAILABLE ? X : Check;
+              const isPending = pending.has(k);
 
               return (
                 <button
                   key={k}
-                  className={["cell","day",st, k === todayKey ? "today" : ""].join(" ")}
+                  className={[
+                    "cell","day",st, k === todayKey ? "today" : "", isPending ? "updating" : ""
+                  ].join(" ")}
                   onClick={() => toggleDay(c.date)}
-                  aria-label={`${k} – ${st}`}
+                  aria-label={`${k} – ${st}${isPending ? " (saving…)" : ""}`}
                   type="button"
-                  disabled={st === STATE.BUSY}              // 🔒 parceiro não consegue clicar/alterar
-                  title={st === STATE.BUSY ? "Booked by admin" : undefined}
+                  disabled={st === STATE.BUSY || isPending}
+                  title={st === STATE.BUSY ? "Booked by admin" : (isPending ? "Saving…" : undefined)}
                 >
                   <div className="daytop">
                     <span className="num">{c.date.getDate()}</span>
@@ -321,7 +349,7 @@ export default function PartnerCalendar({ currentUser }) {
                     ].join(" ")}
                     aria-hidden="true"
                   >
-                    <Icon size={12} />
+                    {isPending ? <span className="mini-spinner" /> : <Icon size={12} />}
                   </span>
 
                   <div className="dayfoot" />

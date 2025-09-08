@@ -18,7 +18,8 @@ import {
   Wallet,
   CalendarDays,
   History,
-  MoreVertical
+  MoreVertical,
+  Zap, // << novo ícone para Lightning Lanes
 } from 'lucide-react';
 
 // Providers / Pages
@@ -33,8 +34,8 @@ import Dashboard from './pages/Dashboard.jsx';
 import PartnerProfile from './pages/PartnerProfile.jsx';
 import PartnerWallet from './pages/PartnerWallet.jsx';
 import PartnerCalendar from './pages/PartnerCalendar.jsx';
-import PartnerTimeline from './pages/PartnerTimeline.jsx';
 import PartnerReimbursements from './pages/PartnerReimbursements.jsx';
+import PartnerLightningLanes from './pages/PartnerLightningLanes.jsx'; // << NOVO
 
 // Admin Capacity
 import Capacity from './pages/Capacity.jsx';
@@ -364,7 +365,7 @@ function App() {
     { id: 'partner_wallet',         icon: Wallet,       label: 'Wallet',         description: 'Payments & approvals' },
     { id: 'partner_reimbursements', icon: DollarSign,   label: 'Reimbursements', description: 'Request reimbursements' },
     { id: 'partner_calendar',       icon: CalendarDays, label: 'Calendar',       description: 'Your upcoming tasks' },
-    { id: 'partner_timeline',       icon: History,      label: 'Timeline',       description: 'Activity & history' },
+    { id: 'partner_lightning_lanes',icon: Zap,          label: 'Lightning Lanes',description: 'LL manager' }, // << NOVO
   ];
 
   const menuItems = isPartner
@@ -376,11 +377,11 @@ function App() {
   const allMenusForHeader = [
     ...adminMenuItems,
     ...financeMenuItems,
-    { id: 'partner_profile', label: 'Profile' },
-    { id: 'partner_wallet', label: 'Wallet' },
-    { id: 'partner_reimbursements', label: 'Reimbursements' },
-    { id: 'partner_calendar', label: 'Calendar' },
-    { id: 'partner_timeline', label: 'Timeline' },
+    { id: 'partner_profile',         label: 'Profile' },
+    { id: 'partner_wallet',          label: 'Wallet' },
+    { id: 'partner_reimbursements',  label: 'Reimbursements' },
+    { id: 'partner_calendar',        label: 'Calendar' },
+    { id: 'partner_lightning_lanes', label: 'Lightning Lanes' }, // << NOVO
   ];
   const pageLabel = (allMenusForHeader.find(i => i.id === currentPage)?.label) || (isPartner ? 'Wallet' : 'Dashboard');
 
@@ -708,9 +709,10 @@ function App() {
               {isPartner && currentPage === 'partner_reimbursements' && (
                 <PartnerReimbursements currentUser={currentUser} />
               )}
-              {isPartner && currentPage === 'partner_timeline' && (
-                <PartnerTimeline currentUser={currentUser} />
+              {isPartner && currentPage === 'partner_lightning_lanes' && (
+                <PartnerLightningLanes currentUser={currentUser} /> // << NOVO
               )}
+        
             </div>
           </div>
 
@@ -744,11 +746,11 @@ function App() {
 
 function MobileTabBar({ role = 'admin', currentPage, setCurrentPage, onMore }) {
   const partnerTabs = [
-    { id: 'partner_profile',        label: 'Profile',  icon: User },
-    { id: 'partner_wallet',         label: 'Wallet',   icon: Wallet },
-    { id: 'partner_reimbursements', label: 'Reimb.',   icon: DollarSign },
-    { id: 'partner_calendar',       label: 'Calendar', icon: CalendarDays },
-    { id: 'partner_timeline',       label: 'Timeline', icon: History },
+    { id: 'partner_profile',         label: 'Profile',  icon: User },
+    { id: 'partner_wallet',          label: 'Wallet',   icon: Wallet },
+    { id: 'partner_reimbursements',  label: 'Reimb.',   icon: DollarSign },
+    { id: 'partner_calendar',        label: 'Calendar', icon: CalendarDays },
+    { id: 'partner_lightning_lanes', label: 'L. Lanes', icon: Zap }, // << NOVO
   ];
   const adminTabs = [
     { id: 'dashboard', label: 'Home',     icon: LayoutDashboard },

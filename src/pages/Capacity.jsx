@@ -1,4 +1,8 @@
-// src/pages/Capacity.jsx
+/* arquivo completo, com 3 mudanças: 
+   (a) depois de book/unbook, recarrega avail + capacity
+   (b) em setDayForPartner, recarrega capacity no sucesso
+   (c) mantém otimista com rollback no catch
+*/
 import React, { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
@@ -126,7 +130,6 @@ export default function Capacity() {
         );
         setPartnersAll(arr);
       } catch {
-        // fallback vazio se backend off
         setPartnersAll([]);
       } finally {
         setLoadingUsers(false);
@@ -169,13 +172,11 @@ export default function Capacity() {
   const fmMonth = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  // disponibilidade do parceiro selecionado (calendários 3 meses)
-  const [avail, setAvail] = useState({}); // { 'YYYY-MM-DD': 'busy'|'unavailable' } (available = ausência)
+  const [avail, setAvail] = useState({});
   const [loadingAvailSel, setLoadingAvailSel] = useState(false);
 
   const loadSelectedPartnerAvail = async () => {
     if (!partnerId) { setAvail({}); return; }
-    // buscar do primeiro dia do mês base até o último dia do 3º mês
     const start = monthStart(baseMonth);
     const end = monthEnd(addMonths(baseMonth, 2));
     const from = ymd(start);
@@ -186,7 +187,6 @@ export default function Capacity() {
       const map = {};
       for (const it of items || []) {
         if (it?.date && (it.state === "busy" || it.state === "unavailable")) {
-          // se backend retornar "by", podemos guardar objeto
           map[it.date] = it.by ? { state: it.state, by: it.by } : it.state;
         }
       }
@@ -200,7 +200,7 @@ export default function Capacity() {
 
   useEffect(() => { loadSelectedPartnerAvail(); }, [partnerId, baseMonth]);
 
-  // mapa de disponibilidade para capacity (todos os parceiros filtrados num range rolante)
+  // janela rolante para capacity
   const [rangeDays, setRangeDays] = useState(90);
   const nextDays = useMemo(() => {
     const arr = [];
@@ -212,7 +212,7 @@ export default function Capacity() {
     return arr;
   }, [rangeDays]);
 
-  const [calByPartner, setCalByPartner] = useState({}); // { partnerId: { 'YYYY-MM-DD': 'busy'|'unavailable' } }
+  const [calByPartner, setCalByPartner] = useState({});
   const [loadingCap, setLoadingCap] = useState(false);
 
   const loadCapacityAvail = async () => {
@@ -223,7 +223,6 @@ export default function Capacity() {
 
     setLoadingCap(true);
     try {
-      // carrega em paralelo
       const results = await Promise.all(
         partnersFiltered.map(async (p) => {
           try {
@@ -231,7 +230,7 @@ export default function Capacity() {
             const m = {};
             for (const it of items || []) {
               if (it?.date && (it.state === "busy" || it.state === "unavailable")) {
-                m[it.date] = it.state; // não precisamos do "by" para capacidade
+                m[it.date] = it.state;
               }
             }
             return [p.id, m];
@@ -242,7 +241,6 @@ export default function Capacity() {
       );
       const merged = {};
       results.forEach(([pid, m]) => { merged[pid] = m; });
-      // mantém coerência com o selecionado
       if (partnerId) {
         merged[partnerId] = { ...(merged[partnerId] || {}), ...Object.fromEntries(Object.entries(avail).map(([k,v]) => [k, typeof v === 'string' ? v : v?.state])) };
       }
@@ -252,7 +250,7 @@ export default function Capacity() {
     }
   };
 
-  useEffect(() => { loadCapacityAvail(); }, [partnersFiltered, rangeDays]); // recarrega quando muda filtro/tamanho de janela
+  useEffect(() => { loadCapacityAvail(); }, [partnersFiltered, rangeDays]);
 
   /* ===== Seleção e ações do admin ===== */
   const [selectedDayKey, setSelectedDayKey] = useState("");
@@ -264,7 +262,7 @@ export default function Capacity() {
     setSelectedDayKey(k);
   };
 
-  // Admin marca booked (by: 'admin') se não for indisponível
+  // Admin marca booked
   const bookSelectedDay = async () => {
     if (!selectedDayKey || !partnerId) return;
     const cur = metaOf(avail, selectedDayKey);
@@ -279,8 +277,11 @@ export default function Capacity() {
 
     try {
       await AvApi.setDayAvailability(partnerId, selectedDayKey, STATE.BUSY, "admin");
+      // 🔁 garante refletir em todas as visões
+      await loadSelectedPartnerAvail();
+      await loadCapacityAvail();
     } catch {
-      // rollback simples
+      // rollback
       setAvail((m) => {
         const n = { ...m };
         delete n[selectedDayKey];
@@ -298,7 +299,7 @@ export default function Capacity() {
     }
   };
 
-  // Admin só remove booking que ELE mesmo fez → volta a AVAILABLE
+  // Admin unbook
   const unbookSelectedDay = async () => {
     if (!selectedDayKey || !partnerId) return;
     const cur = metaOf(avail, selectedDayKey);
@@ -322,6 +323,8 @@ export default function Capacity() {
 
     try {
       await AvApi.setDayAvailability(partnerId, selectedDayKey, STATE.AVAILABLE, "admin");
+      await loadSelectedPartnerAvail();
+      await loadCapacityAvail();
     } catch {
       // rollback
       setAvail((m) => ({ ...m, [selectedDayKey]: { state: STATE.BUSY, by: "admin" } }));
@@ -353,8 +356,11 @@ export default function Capacity() {
     }
     try {
       await AvApi.setDayAvailability(pid, key, state, "admin");
+      // 🔁 ressincroniza listas agregadas
+      await loadCapacityAvail();
+      if (pid === partnerId) await loadSelectedPartnerAvail();
     } catch {
-      // rollback básico: recarrega janelas atuais
+      // rollback: recarrega janelas atuais
       if (pid === partnerId) await loadSelectedPartnerAvail();
       await loadCapacityAvail();
     }

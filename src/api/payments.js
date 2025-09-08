@@ -48,7 +48,7 @@ const overlaps = (aStart, aEnd, bStart, bEnd) => {
   return as <= be && bs <= ae;
 };
 
-/* ----------------- API ----------------- */
+/* ----------------- payments (padrão) ----------------- */
 export const listPayments = async (params = {}) => {
   const { data } = await api.get("/payments", { params });
   const norm = normalize(data);
@@ -147,6 +147,60 @@ export const removeServiceFromPayment = async (paymentId, serviceId) => {
   }
 };
 
+/* -------- service → payment status (batched + robusto) -------- */
+const normalizeSvcPayStatus = (raw) => {
+  const s = String(raw || '').toLowerCase();
+  if (!s || s === 'not linked') return 'not linked';
+  if (s.includes('paid')) return 'paid';
+  if (s.includes('declin')) return 'declined';
+  if (s.includes('pend') || s.includes('shar') || s.includes('approv') || s.includes('hold')) return 'pending';
+  return s;
+};
+
+const _chunk = (arr, size) => {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+};
+
+/**
+ * Retorna Map(serviceId -> { status: 'not linked'|'pending'|'paid'|'declined', paymentId })
+ */
+export const getServicesPayStatus = async (ids = []) => {
+  const unique = Array.from(new Set((ids || []).map(String))).filter(Boolean);
+  if (unique.length === 0) return new Map();
+
+  const map = new Map();
+  for (const part of _chunk(unique, 150)) {
+    const { data } = await api.get('/payments/service-status', {
+      params: { ids: part.join(',') }
+    });
+
+    const payload = data ?? {};
+    const items = Array.isArray(payload.items)
+      ? payload.items
+      : Array.isArray(payload.data?.items)
+      ? payload.data.items
+      : [];
+
+    items.forEach((it) => {
+      const sid =
+        it?.serviceId ?? it?.sid ?? it?._id ?? it?.service ?? it?.sId ?? null;
+      const st =
+        it?.status ?? it?.paymentStatus ?? it?.state ?? 'not linked';
+      const pid =
+        it?.paymentId ?? it?.pid ?? it?.payment ?? it?.pId ?? null;
+
+      if (!sid) return;
+      map.set(String(sid), {
+        status: normalizeSvcPayStatus(st),
+        paymentId: pid ? String(pid) : null,
+      });
+    });
+  }
+  return map;
+};
+
 /* ---------- compat para Dashboard ---------- */
 export const fetchPayments = listPayments;
 
@@ -159,4 +213,5 @@ export default {
   listEligibleServices,
   addServiceToPayment,
   removeServiceFromPayment,
+  getServicesPayStatus, // <- novo
 };
