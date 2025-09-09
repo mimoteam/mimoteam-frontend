@@ -3,7 +3,8 @@ import axios from "axios";
 /** =========================
  *  Config base
  *  ========================= */
-export const API_URL = (import.meta?.env?.VITE_API_URL || "http://localhost:4000").replace(/\/$/, "");
+const RAW_BASE = (import.meta?.env?.VITE_API_URL || "http://localhost:4000").replace(/\/$/, "");
+export const API_URL = /\/api$/i.test(RAW_BASE) ? RAW_BASE : `${RAW_BASE}/api`;
 const DEBUG = !!(import.meta?.env?.VITE_HTTP_DEBUG);
 
 /** Utils */

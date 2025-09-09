@@ -445,16 +445,19 @@ function SectionStatus({
               </div>
               {rows.map(p=>{
                 const lines = (p.serviceIds||[]).map(id=> serviceById.get(id)).filter(Boolean);
+                const totalFromLines = lines.reduce((sum, s) => sum + Number(s?.finalValue || 0), 0);
+                const displayTotal = lines.length ? totalFromLines : Number(p.total || 0);
+                const partnerShown = (p.partnerName || (lines[0]?.team) || '—');
                 const isOpen = open.has(p.id);
                 return (
                   <div className="tr" key={p.id}>
-                    <div className="td"><Users size={14}/> {p.partnerName||'—'}</div>
+                    <div className="td"><Users size={14}/> {partnerShown}</div>
                     <div className="td">
                       <div className="wk-chip"><CalendarDays size={14}/> {p.weekStart? `${fmtDate(p.weekStart)} — ${fmtDate(p.weekEnd)}` : '—'}</div>
                       {showPaidAt && p.paidAt && <div style={{fontSize:12,color:'#64748B'}}>Paid at: {fmtDateTime(p.paidAt)}</div>}
                     </div>
                     <div className="td center">{lines.length}</div>
-                    <div className="td right"><b>{toMoney(p.total)}</b></div>
+                    <div className="td right"><b>{toMoney(displayTotal)}</b></div>
                     <div className="td center">
                       <span className={`tag ${tagClass}`}>
                         {statusLabel === 'AWAITING' ? 'AWAITING APPROVAL' : statusLabel}

@@ -22,11 +22,16 @@ function sameYYYYMM(iso, ym){
   if (!iso || !ym) return false;
   const d = new Date(iso);
   const [y,m] = ym.split('-').map(Number);
-  return d.getUTCFullYear() === y && (d.getUTCMonth() + 1) === m;
+  return d.getUTCFullYear() === y && (d.getUTCMonth() + 1) === m; // UTC evita “quebra” no fim de mês
 }
 
 const fmtUSD = (n) => `$${Number(n || 0).toFixed(2)}`;
 const NORM = (s) => String(s || '').toUpperCase();
+const SID = (v) => (v == null ? null : String(v));
+
+/* Datas normalizadas (pagamentos podem vir em formatos diferentes) */
+const getPWeekStart = (p) => p?.week?.start || p?.weekStart || p?.periodFrom || p?.createdAt || null;
+const getPWeekEnd   = (p) => p?.week?.end   || p?.weekEnd   || p?.periodTo   || p?.createdAt || null;
 
 const SERVICE_LABELS = {
   IN_PERSON_TOUR: 'In Person Tour',
@@ -47,24 +52,24 @@ const fmtServiceType = (v) => {
 
 function asId(v) {
   if (!v) return null;
-  if (typeof v === 'string') return v;
-  if (typeof v === 'object') return v._id || v.id || v.serviceId || null;
+ if (typeof v === 'string') return SID(v);
+  if (typeof v === 'object') return SID(v._id || v.id || v.serviceId || null);
   return null;
+
 }
 function extractServiceIdsFromPayment(p) {
-  if (Array.isArray(p?.serviceIds)) return p.serviceIds.map(asId).filter(Boolean);
+if (Array.isArray(p?.serviceIds)) return p.serviceIds.map(asId).filter(Boolean);
   if (Array.isArray(p?.services))   return p.services.map(asId).filter(Boolean);
+ if (Array.isArray(p?.services))   return p.services.map(asId).filter(Boolean);
   if (Array.isArray(p?.items))      return p.items.map((it) => asId(it?.service || it?.serviceId || it)).filter(Boolean);
-  return [];
-}
+   return [];
+ }
 function embeddedServiceLines(p) {
   if (Array.isArray(p?.services) && p.services.length && typeof p.services[0] === 'object') {
-    return p.services.map((s) => ({ ...s, id: s._id || s.id }));
-  }
+  return p.services.map((s) => ({ ...s, id: SID(s._id || s.id) })); }
   if (Array.isArray(p?.items) && p.items.length && typeof p.items[0] === 'object') {
     return p.items.map((s) => {
-      const sid = s._id || s.id || s.serviceId || (s.service && (s.service._id || s.service.id));
-      return { ...s, id: sid };
+const sid = SID(s._id || s.id || s.serviceId || (s.service && (s.service._id || s.service.id)));      return { ...s, id: sid };
     });
   }
   return [];
@@ -77,15 +82,27 @@ function monthToRange(ym) {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-/* ============== NOVO: mapeamento de status para visão simples ============== */
-/* Mostramos só: PENDING, APPROVED, PAID, DECLINED.
-   Qualquer outro (ex.: SHARED, ON_HOLD, PENDING) entra como "PENDING". */
+/* ============== Mapeamento de status ============== */
 const viewStatus = (raw) => {
   const s = NORM(raw);
   if (s === 'APPROVED' || s === 'PAID' || s === 'DECLINED') return s;
+  // SHARED e ON_HOLD caem como "PENDING" para a UI do parceiro
   return 'PENDING';
 };
-const isVisibleToPartner  = (p) => !['PENDING','CREATING'].includes(NORM(p.status)); // mantém lógica anterior
+
+/* Visibilidade para o parceiro: só depois do SHARE (e estágios seguintes) */
+const isVisibleToPartner = (p) => {
+  const s = NORM(p?.status);
+  return ['SHARED','APPROVED','PAID','DECLINED','ON_HOLD'].includes(s);
+};
+
+/* Nome do partner (com fallbacks) */
+const partnerDisplayName = (p, currentUser, authIsPartner) =>
+  p?.partnerName
+  || p?.partner?.name
+  || p?.partner?.fullName
+  || (authIsPartner ? (currentUser?.fullName || currentUser?.name) : '')
+  || '—';
 
 /* ================================================================================= */
 
@@ -99,7 +116,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   const [loading, setLoading]   = useState(false);
   const [lastError, setLastError] = useState(null);
 
-  const [statusFilter, setStatusFilter] = useState('PENDING'); // agora começa em PENDING
+  const [statusFilter, setStatusFilter] = useState('PENDING');
   const defaultMonth = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
 
   const [psMonth, setPsMonth] = useState(defaultMonth);
@@ -116,7 +133,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   const isOpen = (id) => !!openMap[id];
   const toggleOpen = (id) => setOpenMap(m => ({ ...m, [id]: !m[id] }));
 
-  /* ===== dropdown de status (apenas 4 opções) ===== */
+  /* ===== dropdown de status ===== */
   const STATUS_OPTIONS = [
     { value: 'PENDING',   label: 'Pending'   },
     { value: 'APPROVED',  label: 'Approved'  },
@@ -138,7 +155,15 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
 
   /* =================== Fetch helpers =================== */
   const DEV = typeof window !== 'undefined' && window?.location?.hostname === 'localhost';
-  const pickItems = (res) => Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : []);
+
+  // **Robust**: aceita res, res.data, res.items e res.data.items
+  const pickItems = (res) => {
+    if (Array.isArray(res?.items)) return res.items;
+    if (Array.isArray(res?.data?.items)) return res.data.items;
+    if (Array.isArray(res?.data)) return res.data;
+    if (Array.isArray(res)) return res;
+    return [];
+  };
 
   async function fetchPaymentsByMonth(month) {
     setLastError(null);
@@ -193,7 +218,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
           map.set(id, { ...p, id });
         });
         const merged = Array.from(map.values())
-          .sort((x,y) => new Date(y.weekStart || y.createdAt || 0) - new Date(x.weekStart || x.createdAt || 0));
+          .sort((x,y) => new Date(getPWeekStart(y) || y.createdAt || 0) - new Date(getPWeekStart(x) || x.createdAt || 0));
 
         if (alive) setPayments(merged);
       } catch (e) {
@@ -211,7 +236,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
     if (!payments.length) return;
 
     const allIdsSet = new Set();
-    payments.forEach((p) => extractServiceIdsFromPayment(p).forEach((id) => allIdsSet.add(id)));
+    payments.forEach((p) => extractServiceIdsFromPayment(p).forEach((id) => allIdsSet.add(SID(id))));
     if (allIdsSet.size === 0) return;
 
     const missing = Array.from(allIdsSet).filter((id) => !servicesById.has(id));
@@ -231,7 +256,10 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
           fetched.push(...items);
         }
         const next = new Map(servicesById);
-        fetched.forEach(svc => next.set(svc._id || svc.id, { ...svc, id: svc._id || svc.id }));
+        fetched.forEach(svc => {
+          const key = SID(svc._id || svc.id);
+          next.set(key, { ...svc, id: key });
+       });
         if (alive) setServicesById(next);
       } catch (e) {
         console.warn('Failed to load services by ids', e);
@@ -242,12 +270,22 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payments]);
 
-  const linesForPayment = (p) => {
+    const linesForPayment = (p) => {
+    const ids = extractServiceIdsFromPayment(p).map(SID).filter(Boolean);
     const embedded = embeddedServiceLines(p);
-    if (embedded.length) return embedded;
-    const ids = extractServiceIdsFromPayment(p);
-    if (!ids.length) return [];
-    return ids.map((id) => servicesById.get(id)).filter(Boolean);
+    const embById = new Map(embedded.map(l => [SID(l.id), l]));
+    if (ids.length) {
+      // Prioriza a lista oficial de ids do pagamento (ordem e cobertura)
+      const out = ids.map(id => embById.get(id) || servicesById.get(id)).filter(Boolean);
+      // Caso existam embutidos extras não listados em serviceIds, acrescenta sem duplicar
+      embedded.forEach(l => {
+        const k = SID(l.id);
+        if (!ids.includes(k) && !out.find(x => SID(x.id) === k)) out.push(l);
+      });
+      return out;
+    }
+    // fallback: sem serviceIds, usa somente o embutido
+    return embedded;
   };
 
   const sumValues = (arr) =>
@@ -256,44 +294,49 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   const totalForPayment = (p) => {
     const lines = linesForPayment(p);
     if (Array.isArray(lines) && lines.length) return sumValues(lines);
-    return Number(p.total ?? p.displayTotal ?? p.totalComputed ?? 0);
+    return Number(p.total ?? p.displayTotal ?? p.totalComputed ?? p.totalAmount ?? 0);
   };
 
   /* =============== Derivados =============== */
+
+  // 1) Lista por status — AGORA visível somente “depois do share”
   const statusPayments = useMemo(() => {
     let arr = payments.slice();
+    arr = arr.filter(isVisibleToPartner);               // <<<<<<<<<< importantíssimo
     arr = arr.filter(p => viewStatus(p.status) === statusFilter);
     arr = arr.filter(p => {
-      const ref = p.weekStart || p.periodFrom || p.periodTo || p.createdAt;
+      const ref = getPWeekStart(p) || p.createdAt;
       return ref && sameYYYYMM(ref, psMonth);
     });
-    arr.sort((a,b) => new Date(b.weekStart || b.createdAt || 0) - new Date(a.weekStart || a.createdAt || 0));
+    arr.sort((a,b) => new Date(getPWeekStart(b) || b.createdAt || 0) - new Date(getPWeekStart(a) || a.createdAt || 0));
     return arr;
   }, [payments, statusFilter, psMonth]);
 
   const psTotalPages = Math.max(1, statusPayments.length || 1);
   const psCurrent = statusPayments[psPage - 1] || null;
 
+  // 2) All payments (já tinha o filtro de visibilidade)
   const allPaymentsFiltered = useMemo(() => {
     const arr = payments
       .filter(isVisibleToPartner)
       .filter(p => {
-        const ref = p.weekStart || p.periodFrom || p.periodTo || p.createdAt;
+        const ref = getPWeekStart(p) || p.createdAt;
         return ref && sameYYYYMM(ref, apMonth);
       })
-      .sort((a,b) => new Date(b.weekStart || b.createdAt || 0) - new Date(a.weekStart || a.createdAt || 0));
+      .sort((a,b) => new Date(getPWeekStart(b) || b.createdAt || 0) - new Date(getPWeekStart(a) || a.createdAt || 0));
     return arr;
   }, [payments, apMonth]);
 
   const apTotalPages = Math.max(1, allPaymentsFiltered.length || 1);
   const apCurrent = allPaymentsFiltered[apPage - 1] || null;
 
+  // 3) Métricas — incluem servicesById para recalcular quando as linhas chegarem
   const [weekMetrics, monthMetrics, pendingCount, yearTotal] = useMemo(() => {
     const { start, end } = getWeekWedTue(weekRef);
 
     const inWeek = payments.filter(p => {
       if (!isVisibleToPartner(p)) return false;
-      const ref = p.weekStart || p.createdAt;
+      const ref = getPWeekStart(p) || p.createdAt;
       const d = ref ? new Date(ref) : null;
       return d && d >= start && d <= end;
     });
@@ -301,7 +344,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
 
     const inMonth = payments.filter(p => {
       if (!isVisibleToPartner(p)) return false;
-      const ref = p.weekStart || p.periodFrom || p.periodTo || p.createdAt;
+      const ref = getPWeekStart(p) || p.createdAt;
       return ref && sameYYYYMM(ref, apMonth);
     });
     const monthTotal = inMonth.reduce((sum, p) => sum + totalForPayment(p), 0);
@@ -311,7 +354,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
     const Y = new Date().getFullYear();
     const yCount = payments.filter(p => {
       if (!isVisibleToPartner(p)) return false;
-      const ref = p.weekStart || p.createdAt;
+      const ref = getPWeekStart(p) || p.createdAt;
       const d = ref ? new Date(ref) : null;
       return d && d.getFullYear() === Y;
     }).length;
@@ -322,7 +365,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
       pendCount,
       yCount
     ];
-  }, [payments, weekRef, apMonth]);
+  }, [payments, weekRef, apMonth, servicesById]);
 
   useEffect(() => { setPsPage(1); }, [statusFilter, psMonth]);
 
@@ -369,7 +412,9 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   };
 
   const weekLabel = (p) => {
-    if (p.weekStart && p.weekEnd) return `${new Date(p.weekStart).toLocaleDateString()} – ${new Date(p.weekEnd).toLocaleDateString()}`;
+    const s = getPWeekStart(p);
+    const e = getPWeekEnd(p);
+    if (s && e) return `${new Date(s).toLocaleDateString()} – ${new Date(e).toLocaleDateString()}`;
     if (p.periodFrom || p.periodTo) {
       const from = p.periodFrom ? new Date(p.periodFrom).toLocaleDateString() : '…';
       const to   = p.periodTo   ? new Date(p.periodTo).toLocaleDateString()   : '…';
@@ -378,7 +423,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
     return '—';
   };
 
-  /* ======= Breakdown table: render sempre 6 colunas (CSS adapta no mobile) ======= */
+  /* ======= Breakdown table ======= */
   const renderBreakdownTable = (lines) => {
     if (!lines?.length) return null;
 
@@ -425,9 +470,6 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   /* =========================== RENDER =========================== */
   return (
     <div className="partner-page wallet-page">
-      {/* Título 3D (apenas dentro da página — não mexe no header global) */}
- 
-
       {/* ===== MÉTRICAS ===== */}
       <div className="wallet-metrics">
         <div className={`wm-card ${coloredCards ? 'wm-blue' : ''}`}>
@@ -540,7 +582,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
                       </div>
                     </div>
                     <div className="wi-grid">
-                      <div className="wi-row"><span>Partner</span><strong>{p.partnerName || '—'}</strong></div>
+                      <div className="wi-row"><span>Partner</span><strong>{partnerDisplayName(p, currentUser, authIsPartner)}</strong></div>
                       <div className="wi-row"><span>Services</span><strong>{extractServiceIdsFromPayment(p).length || embeddedServiceLines(p).length || 0}</strong></div>
                       <div className="wi-row">
                         <span>Details</span>
@@ -565,7 +607,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
                     </div>
                   </div>
 
-                  {/* Breakdown – container com scroll interno (x e y) */}
+                  {/* Breakdown */}
                   <div className="breakdown-box" data-open={isOpen(p.id)}>
                     <button className="bd-toggle" onClick={() => toggleOpen(p.id)} aria-expanded={isOpen(p.id)}>
                       <span>Breakdown</span>
@@ -660,7 +702,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
                       </div>
                     </div>
                     <div className="wi-grid">
-                      <div className="wi-row"><span>Partner</span><strong>{p.partnerName || '—'}</strong></div>
+                      <div className="wi-row"><span>Partner</span><strong>{partnerDisplayName(p, currentUser, authIsPartner)}</strong></div>
                       <div className="wi-row"><span># Services</span><strong>{extractServiceIdsFromPayment(p).length || embeddedServiceLines(p).length || 0}</strong></div>
                     </div>
                   </div>
@@ -669,7 +711,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
                     <div className="wi-price">{fmtUSD(totalForPayment(p))}</div>
                   </div>
 
-                  {/* Breakdown – container com scroll interno (x e y) */}
+                  {/* Breakdown */}
                   <div className="breakdown-box" data-open={isOpen(p.id)}>
                     <button className="bd-toggle" onClick={() => toggleOpen(p.id)} aria-expanded={isOpen(p.id)}>
                       <span>Breakdown</span>

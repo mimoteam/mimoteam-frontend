@@ -1,5 +1,5 @@
 // src/api/payments.js
-import { httpClient as api } from "./http";
+import { api } from "./http";
 
 /* ----------------- helpers ----------------- */
 const normalize = (res) => {
@@ -17,17 +17,17 @@ const normalize = (res) => {
 };
 
 const getOnePayment = async (id) => {
-  const { data } = await api.get(`/payments/${id}`);
+  const data = await api.get(`/api/payments/${id}`);
   return data;
 };
 
 const listServices = async (params = {}) => {
-  const { data } = await api.get("/services", { params });
+  const data = await api.get("/api/services", { params });
   return normalize(data).items.map((s) => ({ ...s, id: String(s._id || s.id) }));
 };
 
 const listPaymentsRaw = async (params = {}) => {
-  const { data } = await api.get("/payments", { params });
+  const data = await api.get("/api/payments", { params });
   const norm = normalize(data);
   return {
     ...norm,
@@ -50,7 +50,7 @@ const overlaps = (aStart, aEnd, bStart, bEnd) => {
 
 /* ----------------- payments (padrão) ----------------- */
 export const listPayments = async (params = {}) => {
-  const { data } = await api.get("/payments", { params });
+  const data = await api.get("/api/payments", { params });
   const norm = normalize(data);
   return {
     ...norm,
@@ -63,22 +63,22 @@ export const listPayments = async (params = {}) => {
 };
 
 export const createPayment = async (payload) => {
-  const { data } = await api.post("/payments", payload);
-  return { ...data, id: String(data._id || data.id) };
+  const out = await api.post("/api/payments", payload);
+  return { ...out, id: String(out._id || out.id) };
 };
 
 export const updatePayment = async (id, payload) => {
   try {
-    const { data } = await api.patch(`/payments/${id}`, payload);
+    const data = await api.patch(`/api/payments/${id}`, payload);
     return { ...data, id: String(data._id || data.id) };
   } catch {
-    const { data } = await api.put(`/payments/${id}`, payload);
+    const data = await api.put(`/api/payments/${id}`, payload);
     return { ...data, id: String(data._id || data.id) };
   }
 };
 
 export const deletePayment = async (id) => {
-  const { data } = await api.delete(`/payments/${id}`);
+  const data = await api.delete(`/api/payments/${id}`);
   return data;
 };
 
@@ -86,7 +86,7 @@ export const listEligibleServices = async (params = {}) => {
   const { partnerId, dateFrom, dateTo, page = 1, pageSize = 500 } = params;
 
   try {
-    const { data } = await api.get("/payments/eligible", {
+    const data = await api.get("/api/payments/eligible", {
       params: { partnerId, dateFrom, dateTo, page, pageSize },
     });
     const norm = normalize(data);
@@ -121,7 +121,7 @@ export const listEligibleServices = async (params = {}) => {
 
 export const addServiceToPayment = async (paymentId, serviceId) => {
   try {
-    const { data } = await api.post(`/payments/${paymentId}/items`, { serviceId });
+    const data = await api.post(`/api/payments/${paymentId}/items`, { serviceId });
     return { ...data, id: String(data._id || data.id) };
   } catch {
     const current = await getOnePayment(paymentId);
@@ -135,7 +135,7 @@ export const addServiceToPayment = async (paymentId, serviceId) => {
 
 export const removeServiceFromPayment = async (paymentId, serviceId) => {
   try {
-    const { data } = await api.delete(`/payments/${paymentId}/items/${serviceId}`);
+    const data = await api.delete(`/api/payments/${paymentId}/items/${serviceId}`);
     return { ...data, id: String(data._id || data.id) };
   } catch {
     const current = await getOnePayment(paymentId);
@@ -163,16 +163,14 @@ const _chunk = (arr, size) => {
   return out;
 };
 
-/**
- * Retorna Map(serviceId -> { status: 'not linked'|'pending'|'paid'|'declined', paymentId })
- */
+/** Map(serviceId -> { status, paymentId }) */
 export const getServicesPayStatus = async (ids = []) => {
   const unique = Array.from(new Set((ids || []).map(String))).filter(Boolean);
   if (unique.length === 0) return new Map();
 
   const map = new Map();
   for (const part of _chunk(unique, 150)) {
-    const { data } = await api.get('/payments/service-status', {
+    const data = await api.get('/api/payments/service-status', {
       params: { ids: part.join(',') }
     });
 
@@ -206,12 +204,12 @@ export const fetchPayments = listPayments;
 
 export default {
   listPayments,
-  fetchPayments, // alias no default
+  fetchPayments,
   createPayment,
   updatePayment,
   deletePayment,
   listEligibleServices,
   addServiceToPayment,
   removeServiceFromPayment,
-  getServicesPayStatus, // <- novo
+  getServicesPayStatus,
 };

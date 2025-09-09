@@ -95,6 +95,9 @@ const StatusBadge = ({ status }) => {
   return <span className="pay-status" style={{ backgroundColor: s.color }}>{s.name}</span>;
 };
 
+// preferência unificada de total vinda do backend
+const valueOfPayment = (p) => Number(p?.displayTotal ?? p?.totalAmount ?? p?.total ?? 0);
+
 /** ===================== Service→Payment Status (UI) ===================== */
 const SERVICE_STATUS_META = {
   'not linked': { label: 'not linked', color: '#9CA3AF' },
@@ -175,7 +178,12 @@ async function fetchAllServices() {
 }
 async function fetchAllPayments() {
   const raw = await fetchAllPages('/payments', { pageSize: 200 });
-  return raw.map(p => ({ ...p, id: p._id || p.id }));
+  return raw.map(p => ({
+    ...p,
+    id: p._id || p.id,
+    displayTotal: Number(p.displayTotal ?? p.totalAmount ?? p.total ?? 0),
+    partnerName: p.partnerName || p.partner?.name || p.partner?.fullName || ''
+  }));
 }
 
 /** ===================== Componente ===================== */
@@ -962,10 +970,8 @@ const Payments = () => {
               const isOpen = expanded.has(p.id);
               const lines = (p.serviceIds || []).map(id => serviceById.get(String(id))).filter(Boolean);
               const subtotal = calcSubtotalWithDrafts(lines);
-              const serverTotal = Number(p.total || 0);
-              const displayTotal = (lineEditOn === p.id)
-                ? subtotal
-                : (serverTotal > 0 ? serverTotal : subtotal);
+              const serverTotal = valueOfPayment(p);
+              const displayTotal = (lineEditOn === p.id) ? subtotal : (serverTotal || subtotal);
 
               const wkKey = p.week?.key || p.weekKey;
               const partnerDisplayName =
