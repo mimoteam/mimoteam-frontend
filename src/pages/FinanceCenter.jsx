@@ -88,19 +88,30 @@ function normalizeList(res){
   return [];
 }
 
+function _mergeServiceIdsLegacy(p){
+  const set = new Set();
+  const add = (v)=> {
+    const s = String((v && (v._id||v.id||v.serviceId||v.service||v)) || '').trim();
+    if(s) set.add(s);
+  };
+  if (Array.isArray(p.serviceIds)) p.serviceIds.forEach(add);
+  if (Array.isArray(p.items))      p.items.forEach(add);
+  if (Array.isArray(p.services))   p.services.forEach(add);
+  return Array.from(set);
+}
+
 function normalizePayment(p){
-  // garantias básicas de campos usados na UI
   const status = String(p.status || p.state || '').toUpperCase();
+  const totalValue = (typeof p.total === 'number' ? p.total
+                     : (typeof p.totalAmount === 'number' ? p.totalAmount : 0));
   return {
     id: p.id || p._id || p.paymentId || `${p.partnerId || 'p'}_${p.weekStart || p.createdAt || Date.now()}`,
-    partnerId: p.partnerId || p.userId || p.partner?.id,
+    partnerId: p.partnerId || p.userId || p.partner?.id || p.partner?._id,
     partnerName: p.partnerName || p.partner?.name || p.partner?.fullName || '—',
     weekStart: p.weekStart || p.period?.start || p.periodFrom || p.createdAt || null,
     weekEnd:   p.weekEnd   || p.period?.end   || p.periodTo   || null,
-    serviceIds: Array.isArray(p.serviceIds) ? p.serviceIds
-               : Array.isArray(p.services) ? p.services.map((s)=> s.id || s._id).filter(Boolean)
-               : [],
-    total: Number(p.total ?? p.amount ?? 0),
+    serviceIds: _mergeServiceIdsLegacy(p),
+    total: Number(totalValue || 0),
     status: status, // SHARED | APPROVED | PAID ...
     paidAt: p.paidAt || null,
   };
@@ -159,8 +170,9 @@ export default function FinanceCenter(){
     setLoading(true);
     try {
       const [pRes, sRes] = await Promise.all([
-        api('/payments', { method: 'GET' }),
-        api('/services', { method: 'GET' }),
+        // pega TODOS os pagamentos de uma vez para não sofrer com paginação
+        api('/payments?all=1&sortBy=weekStart&sortDir=desc', { method: 'GET' }),
+        api('/services?page=1&pageSize=5000', { method: 'GET' }),
       ]);
       const pList = normalizeList(pRes).map(normalizePayment);
       const sList = normalizeList(sRes).map(normalizeService);
@@ -206,7 +218,10 @@ export default function FinanceCenter(){
 
   const sharedAll = useMemo(()=>{
     return payments
-      .filter(p => (p.status||'').toUpperCase()==='SHARED' || (p.status||'').toUpperCase()==='AWAITING')
+      .filter(p => {
+        const s = (p.status||'').toUpperCase();
+        return s==='SHARED' || s==='AWAITING';
+      })
       .filter(p => p.weekStart ? sameYYYYMM(p.weekStart, month) : (p.createdAt? sameYYYYMM(p.createdAt, month) : true))
       .sort((a,b)=> new Date(b.weekStart||b.createdAt||0) - new Date(a.weekStart||a.createdAt||0));
   },[payments, month]);
@@ -272,7 +287,6 @@ export default function FinanceCenter(){
       return next;
     });
 
-    // tenta múltiplas rotas comuns
     try {
       try {
         await api(`/payments/${paymentId}`, { method: 'PATCH', body: { status: 'PAID', paidAt: new Date().toISOString() } });
@@ -281,7 +295,7 @@ export default function FinanceCenter(){
       }
       await loadFromBackend();
     } catch {
-      // se falhar, mantém cache local já atualizado
+      // mantém cache local se der erro
     }
   }
 

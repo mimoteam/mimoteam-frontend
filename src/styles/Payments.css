@@ -32,19 +32,47 @@
 /* ====== FILTERS ========================================================= */
 .filters-card {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
+  grid-template-rows: auto auto;
+  gap: 12px;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 10px;
+  padding: 12px;
 }
+
+/* === filtros (desktop numa linha) ======================================= */
 .filters-row {
-  display: grid;
-  grid-template-columns: 260px 200px 200px 1fr;
+  display: flex;
+  align-items: flex-end;
   gap: 10px;
-  align-items: end;
+  flex-wrap: wrap;           /* mobile/tablet podem quebrar */
 }
+.filters-row .filter { min-width: 0; }
+@media (min-width: 1024px) {
+  .filters-row { flex-wrap: nowrap; }
+  /* partner | date from | date to | search */
+  .filters-row .filter:nth-child(1) { width: 200px; flex: 0 0 200px; }
+  .filters-row .filter:nth-child(2) { width: 160px; flex: 0 0 160px; }
+  .filters-row .filter:nth-child(3) { width: 160px; flex: 0 0 160px; }
+  .filters-row .filter:nth-child(4) { flex: 1 1 320px; max-width: 520px; }
+}
+/* evita o input crescer demais e força elipse do texto */
+.filters-row .filter:last-child input {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* linha das ações (total/semana/botões) */
+.actions-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(280px, 0.9fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+/* garante que o botão principal fique colado à direita da faixa de ações */
+.actions-row .btn--primary { justify-self: end; }
+
 .filter label {
   display: block;
   font-size: 12px;
@@ -60,12 +88,6 @@
   background: #fff;
   box-shadow: 0 2px 10px rgba(17,24,39,0.03) inset;
 }
-.actions-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  gap: 10px;
-  align-items: center;
-}
 
 .total-pill {
   display: inline-flex;
@@ -78,6 +100,7 @@
   font-weight: 700;
   border: 1px solid #c7d2fe;
 }
+
 .assign-wrap {
   display: inline-flex;
   align-items: center;
@@ -143,7 +166,8 @@
   width: 100%;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: hidden; /* mantém a borda arredondada */
+  background: #fff;
 }
 .table .thead {
   background: #f9fafb;
@@ -160,10 +184,13 @@
   box-sizing: border-box;
   line-height: 1.25;
   min-width: 0;
+  display: flex;               /* títulos alinhados com o conteúdo */
+  align-items: center;
+  justify-content: flex-start;
 }
 .tbody .tr:last-child .td { border-bottom: none; }
-.th.center, .td.center { text-align: center; }
-.th.right,  .td.right  { text-align: right; }
+.th.center, .td.center { justify-content: center; text-align: center; }
+.th.right,  .td.right  { justify-content: flex-end; text-align: right; }
 
 /* ====== TABLE: Selection =============================================== */
 .table.table--selection {
@@ -174,10 +201,10 @@
     1fr
     minmax(120px, 180px)
     minmax(90px, 110px)
-    minmax(120px, 220px)  /* Observation com mais fôlego */
+    minmax(120px, 220px)
     minmax(120px, 140px)
     minmax(120px, 140px)
-    minmax(170px, 220px); /* Assigned Week maior para range + key */
+    minmax(170px, 220px);
 }
 .table.table--selection .thead,
 .table.table--selection .tbody .tr {
@@ -189,14 +216,15 @@
 
 /* ====== TABLE: Generated Payments ====================================== */
 .table.table--payments{
-  --gap: 8px;
+  --gap: 10px;
   --col-toggle: 52px;
-  --col-week: minmax(260px, 320px);
-  --col-partner: minmax(220px, 1fr);
-  --col-count: 110px;
-  --col-total: 140px;
-  --col-status: 130px;
-  --col-actions: minmax(320px, 1.1fr); /* mais espaço às ações */
+  /* Mais peso para week/partner; actions só o necessário */
+  --col-week:    minmax(240px, 1.4fr);
+  --col-partner: minmax(200px, 1fr);
+  --col-count:   minmax(80px, 0.5fr);
+  --col-total:   minmax(110px, 0.6fr);
+  --col-status:  minmax(110px, 0.7fr);
+  --col-actions: minmax(180px, max-content); /* <-- encolhe para caber botões */
 }
 .table.table--payments .thead,
 .table.table--payments .tbody .tr{
@@ -405,52 +433,74 @@
 .table .tbody .tr { align-items: center; }
 .table.table--payments .tbody .tr { align-items: flex-start; grid-auto-rows: minmax(44px, auto); }
 
-/* 12) Checkbox centralizado na seleção */
+/* checkbox centralizado na seleção */
 .table.table--selection .tbody .tr .td:first-child {
   display: flex; align-items: center; justify-content: center;
 }
 
-/* 13) Redução de padding em telas menores */
+/* redução de padding em telas menores */
 @media (max-width: 640px) {
   .th, .td { padding: 8px 10px; }
 }
 
-/* 14) Evita tremer com truncamento */
+/* evita tremer com truncamento + altura mínima para alinhamento vertical */
 .table .tbody .tr > .td { min-height: 42px; display: flex; align-items: center; }
-
-/* 15) Força alinhamentos */
-.th { display: flex; align-items: center; justify-content: flex-start; }
-.td { display: flex; align-items: center; justify-content: flex-start; }
-.th.center, .td.center { justify-content: center; text-align: center; }
-.th.right,  .td.right  { justify-content: flex-end; text-align: right; }
 
 /* ====== RESPONSIVO ====================================================== */
 @media (max-width: 1100px) {
-  .filters-row { grid-template-columns: 1fr 1fr 1fr 1fr; }
-  .actions-row { grid-template-columns: 1fr 1fr 1fr; }
+  .actions-row { grid-template-columns: 1fr minmax(220px, 0.9fr) auto auto; }
   .table.table--payments{
-    --col-week: minmax(220px, 280px);
-    --col-actions: minmax(280px, 1fr);
+    --col-week:    minmax(220px, 1.2fr);
+    --col-partner: minmax(180px, 1fr);
+    --col-actions: minmax(200px, max-content);
   }
 }
 @media (max-width: 800px) {
-  .filters-row { grid-template-columns: 1fr 1fr; }
   .actions-row { grid-template-columns: 1fr; }
-  .table { overflow-x: auto; }
+  .table { overflow-x: auto; } /* rolagem horizontal */
   .table.table--payments{
     --col-toggle: 44px;
-    --col-week: minmax(200px, 240px);
+    --col-week:    minmax(200px, 1fr);
     --col-partner: minmax(160px, 1fr);
-    --col-count: 90px;
-    --col-total: 110px;
-    --col-status: 110px;
-    --col-actions: minmax(260px, 1fr);
+    --col-count:   minmax(80px, 0.4fr);
+    --col-total:   minmax(100px, 0.5fr);
+    --col-status:  minmax(110px, 0.6fr);
+    --col-actions: minmax(200px, max-content);
   }
 }
 
-/* 16) Foco visível */
+/* foco visível */
 .btn:focus-visible {
   outline: 2px solid #90D5FF;
   outline-offset: 2px;
   transition: outline-color .2s ease;
+}
+
+/* === Observation flex/grid e texto adaptável =========================== */
+.table.table--selection .td--obs {
+  align-items: flex-start;     /* alinha pelo topo p/ múltiplas linhas */
+  white-space: normal;         /* permite quebra de linha */
+  overflow: visible;           /* não corta conteúdo */
+}
+.obs-grid {
+  display: flex;
+  flex-wrap: wrap;             /* o texto se adapta ao espaço */
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+/* Dá mais espaço para Observation e mantém tudo na mesma linha
+   (corrigido 21fr -> 2fr) */
+.table.table--selection{
+  --cols:
+    46px                       /* checkbox */
+    120px                      /* date */
+    minmax(140px, 200px)       /* client */
+    minmax(160px, 220px)       /* service */
+    minmax(100px, 160px)       /* park */
+    minmax(80px, 100px)        /* guests */
+    minmax(160px, 2fr)         /* observation (maior) */
+    minmax(110px, 130px)       /* amount */
+    minmax(120px, 160px)       /* pay status */
+    minmax(160px, 220px);      /* assigned week */
 }

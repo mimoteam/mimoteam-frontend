@@ -2,8 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Settings, DollarSign, ShoppingCart, User, Calendar, Clock, Users, MapPin, Plus,
-  Edit3, Trash2, RefreshCw, Save, AlertCircle, CheckCircle, Loader, Eye, Calculator,
-  Building, Plane, Baby, Coffee, Car, Home, Globe, X, AlertTriangle, Info,
+  Edit3, Trash2, RefreshCw, Save, AlertCircle, CheckCircle, Loader, Calculator,  Building, Plane, Baby, Coffee, Car, Home, Globe, X, AlertTriangle, Info,
   ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, List, Copy, Download
 } from 'lucide-react';
 import '../styles/Services.css';
@@ -278,44 +277,91 @@ async function deleteServiceCompat(id) {
 // bulk (ordem: POST /services/bulk-delete -> DELETE /services (body) -> DELETE /services?ids=csv)
 async function deleteServicesBulk(ids) {
   const list = Array.from(new Set((ids || []).map(String))).filter(Boolean);
-  if (!list.length) return;
+  if (!list.length) return { deletedIds: [], failedIds: [] };
 
   const CHUNK = 200;
   const chunks = Array.from({ length: Math.ceil(list.length / CHUNK) }, (_, i) =>
     list.slice(i * CHUNK, i * CHUNK + CHUNK)
   );
 
-  for (const part of chunks) {
-    let ok = false;
+  const deletedIds = new Set();
+  const failedIds = new Set();
 
-    // 1) POST /services/bulk-delete
-    try {
-      await http.post('/services/bulk-delete', { ids: part });
-      ok = true;
-    } catch (e1) {
-      if (DEBUG) console.warn('[Services] bulk-delete POST falhou', e1?.response?.status, e1?.response?.data || e1);
+  // tenta interpretar qualquer formato de resposta comum
+  const interpret = (res, requested) => {
+    const d = res?.data ?? res;
+    const out = { deleted: [], failed: [] };
+    if (!d || typeof d !== 'object') return out;
 
-      // 2) DELETE /services com body { ids: [] }
-      try {
-        await http.delete('/services', { data: { ids: part } });
-        ok = true;
-      } catch (e2) {
-        if (DEBUG) console.warn('[Services] bulk DELETE(body) falhou', e2?.response?.status, e2?.response?.data || e2);
-
-        // 3) DELETE /services?ids=a,b,c
-        try {
-          await http.delete('/services', { params: { ids: part.join(',') } });
-          ok = true;
-        } catch (e3) {
-          if (DEBUG) console.warn('[Services] bulk DELETE(query) falhou', e3?.response?.status, e3?.response?.data || e3);
-          const msg = parseApiError(e3 || e2 || e1) || 'Bulk delete failed';
-          throw new Error(msg);
-        }
-      }
+    // formatos [{id, ok}] / {items:[...]} / {results:[...]}
+    const arr = Array.isArray(d) ? d : (Array.isArray(d.items) ? d.items : (Array.isArray(d.results) ? d.results : null));
+    if (arr) {
+      arr.forEach(it => {
+        const id = String(it?.id ?? it?._id ?? it?.serviceId ?? it);
+        if (!id) return;
+        const ok = it?.ok === true || it?.deleted === true || it?.removed === true
+          || it?.status === 'ok' || it?.status === 200 || it?.success === true;
+        (ok ? out.deleted : out.failed).push(id);
+      });
+      return out;
     }
 
-    if (DEBUG && ok) console.info(`[Services] bulk delete OK (${part.length} itens)`);
+    // contadores simples
+    const delCount = Number(d.deleted ?? d.deletedCount ?? d.removed ?? d.removedCount ?? d.count ?? d.n ?? 0);
+    if (delCount >= requested.length) { out.deleted = requested.slice(); return out; }
+
+    // listas explícitas
+    if (Array.isArray(d.deletedIds)) out.deleted = d.deletedIds.map(String);
+    if (Array.isArray(d.failedIds)) out.failed  = d.failedIds.map(String);
+
+    return out;
+  };
+
+  for (const part of chunks) {
+    let bulkWorked = false;
+    let bulkRes = null;
+
+    // 1) POST /services/bulk-delete  { ids: [] }
+    try {
+      bulkRes = await http.post('/services/bulk-delete', { ids: part });
+      bulkWorked = true;
+    } catch {}
+
+    // 2) DELETE /services  body { ids: [] }
+    if (!bulkWorked) {
+      try {
+        bulkRes = await http.delete('/services', { data: { ids: part } });
+        bulkWorked = true;
+      } catch {}
+    }
+
+    // 3) DELETE /services?ids=a,b,c
+    if (!bulkWorked) {
+      try {
+        bulkRes = await http.delete('/services', { params: { ids: part.join(',') } });
+        bulkWorked = true;
+      } catch {}
+    }
+
+    // Se tivemos alguma resposta, tenta entender o que de fato saiu
+    const { deleted = [], failed = [] } = bulkRes ? interpret(bulkRes, part) : {};
+
+    deleted.forEach(id => deletedIds.add(String(id)));
+    failed.forEach(id  => failedIds.add(String(id)));
+
+    // Confirmação: tudo removido? Se não dá pra confirmar, cai para item-a-item
+    const notConfirmed = part.filter(id => !deletedIds.has(String(id)));
+    if (!bulkWorked || notConfirmed.length) {
+      const results = await Promise.allSettled(notConfirmed.map(id => deleteServiceCompat(id)));
+      results.forEach((r, idx) => {
+        const id = String(notConfirmed[idx]);
+        if (r.status === 'fulfilled') deletedIds.add(id);
+        else failedIds.add(id);
+      });
+    }
   }
+
+  return { deletedIds: Array.from(deletedIds), failedIds: Array.from(failedIds) };
 }
 // src/pages/Services.jsx  (Parte 2/4)
 const Services = () => {
@@ -360,12 +406,13 @@ const Services = () => {
   const [sortDirection, setSortDirection] = useState('desc');
 
   // Filtros
-  const [filters, setFilters] = useState({
-    partner: '',
-    serviceType: '',
-    team: '',
-    status: '',
-  });
+const [filters, setFilters] = useState({
+  partner: '',
+  serviceType: '',
+  team: '',
+  status: '',
+  client: '', // <- novo
+});
 
   // Inline edit (valor) + seleção para bulk delete
   const [inlineEditId, setInlineEditId] = useState(null);
@@ -504,13 +551,28 @@ const Services = () => {
     calculatePaymentWeek();
   }, []);
 
-  const normalizePaymentStatus = (s) => {
-    const v = String(s || '').toUpperCase();
-    if (v === 'PAID') return 'PAID';
-    if (v === 'APPROVED') return 'APPROVED';
-    if (v === 'IN_PAYMENT' || v === 'PENDING') return 'PENDING';
-    return 'PENDING';
-  };
+ const normalizePaymentStatus = (s) => {
+  const v = String(s || '').trim().toLowerCase();
+  if (!v || v === 'not linked' || v === 'unlinked' || v === 'not_linked') return 'not_linked';
+  if (v === 'in_payment' || v === 'processing' || v === 'pending')      return 'pending';
+  if (v === 'shared')    return 'shared';
+  if (v === 'approved')  return 'approved';
+  if (v === 'on hold' || v === 'on_hold') return 'on_hold';
+  if (v === 'paid')      return 'paid';
+  return 'not_linked';
+};
+
+const paymentStatusClassName = (norm) =>
+  norm === 'not_linked' ? 'not-linked' : `payment ${norm}`;
+
+const paymentStatusLabel = (norm) => ({
+  not_linked: 'Not linked',
+  pending:    'Pending',
+  shared:     'Shared',
+  approved:   'Approved',
+  on_hold:    'On hold',
+  paid:       'Paid',
+}[norm] || 'Not linked');
 
   /* ===== Carrega pagamentos (local) p/ badge de vínculo ===== */
   useEffect(() => { setPaymentsStore(loadFirstHit(PAYMENTS_KEYS)); }, []);
@@ -1092,10 +1154,9 @@ const handleAddServiceToPayment = (service) => {
     ? `${service.paymentWeek.year}-W${String(service.paymentWeek.weekNumber).padStart(2,'0')}`
     : currentWeekKey(currentWeek);
 
-  const candidates = (paymentsStore || []).filter(
-    (p) => p.weekKey === wk && normalizePaymentStatus(p.status) !== 'PAID'
-  );
-
+ const candidates = (paymentsStore || []).filter(
+  (p) => p.weekKey === wk && normalizePaymentStatus(p.status) !== 'paid'
+);
   if (candidates.length === 0) {
     addNotification('error', 'Nenhum pagamento encontrado', 'Gere o pagamento da semana antes de adicionar.');
     return;
@@ -1220,16 +1281,27 @@ const loadServices = useCallback(
     return debounced(async () => {
       setLoading(true);
       try {
-        const res = await fetchServicesCompat({
-          page: currentPage,
-          pageSize,
-          sortField,
-          sortDirection,
-          filters
-        });
+       const res = await fetchServicesCompat({
+  page: currentPage,
+  pageSize,
+  sortField,
+  sortDirection,
+  filters,
+  // envia também para ?q= no backend (se suportado)
+  search: (filters.client && String(filters.client).trim()) ? String(filters.client).trim() : undefined,
+});
 
-        const rawItems = Array.isArray(res.items) ? res.items : (Array.isArray(res.data) ? res.data : []);
-        const items = rawItems.map(normalizeFromApi);
+const rawItems = Array.isArray(res.items) ? res.items : (Array.isArray(res.data) ? res.data : []);
+let items = rawItems.map(normalizeFromApi);
+
+// Fallback local: caso o backend ignore, filtramos a página atual
+if (filters.client && String(filters.client).trim()) {
+  const q = String(filters.client).trim().toLowerCase();
+  items = items.filter((s) => {
+    const full = `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase();
+    return full.includes(q);
+  });
+}
 
         const totalRecords = Number(res.total ?? res.totalRecords ?? res.count ?? items.length);
         const totalPages = Number(res.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize)));
@@ -1331,40 +1403,27 @@ const bulkDeleteSelected = async () => {
   const ids = services.data.map(s => s.id).filter(id => selectedIds.has(id));
   if (ids.length === 0) return;
   if (!window.confirm(`Delete ${ids.length} selected service(s)?`)) return;
+
   try {
-    const res = await deleteServicesBulk(ids);
-    // sucesso total OU parcial — remove o que sumiu com certeza
-    const successSet = new Set(ids); // assumimos sucesso total quando bulk passou
-    // se houve fallback com relatório, filtra pelos que falharam
-    if (Array.isArray(res)) {
-      // múltiplos chunks — cada item pode ser {ok, failed, failedItems}
-      res.forEach((r) => {
-        if (r && r.failedItems && r.failedItems.length) {
-          r.failedItems.forEach(fi => successSet.delete(fi.id));
-        }
-      });
+    const { deletedIds = [], failedIds = [] } = await deleteServicesBulk(ids);
+
+    if (deletedIds.length) {
+      setServices(prev => ({ ...prev, data: prev.data.filter(s => !deletedIds.includes(s.id)) }));
     }
-    setServices(prev => ({ ...prev, data: prev.data.filter(s => !successSet.has(s.id)) }));
     setSelectedIds(new Set());
-    const totalFailed = (Array.isArray(res) ? res.reduce((acc, r) => acc + (r?.failed || 0), 0) : 0);
-    if (totalFailed > 0) {
-      addNotification('warning', 'Partial delete', `${ids.length - totalFailed} deleted, ${totalFailed} failed.`);
+
+    if (failedIds.length) {
+      addNotification('warning', 'Partial delete', `${deletedIds.length} deleted, ${failedIds.length} failed.`);
     } else {
-      addNotification('success', 'Deleted', `${ids.length} service(s) removed.`);
+      addNotification('success', 'Deleted', `${deletedIds.length} service(s) removed.`);
     }
-    setTimeout(loadServices, 50);
+
+    setTimeout(loadServices, 50); // confere no backend
   } catch (e) {
     addNotification('error', 'Delete failed', parseApiError(e));
   }
 };
 
-/* ===== Status helpers ===== */
-const statusLabel = (raw) => {
-  const id = normalizePaymentStatus(raw);
-  if (id === 'APPROVED') return 'Approved';
-  if (id === 'PAID') return 'Paid';
-  return 'Pending';
-};
 // src/pages/Services.jsx  (Parte 4/4)
   return (
     <div className="services-page">
@@ -1754,9 +1813,13 @@ const statusLabel = (raw) => {
                               <div className="service-value">${Number(service.suggestedValue).toFixed(2)}</div>
                             </div>
                             <div className="col-obs">
-                              {service.observations ? (
-                                <div className="observations" title={service.observations}><AlertCircle size={14} /><span>Yes</span></div>
-                              ) : (<span className="no-obs">-</span>)}
+                            {service.observations?.trim() ? (
+                              <div className="observations-text" title={service.observations}>
+                                {service.observations}
+                              </div>
+                            ) : (
+                              <span className="no-obs">—</span>
+                            )}
                             </div>
                             <div className="col-actions">
                               <button className="action-btn edit-btn" onClick={() => editService(service)} title="Edit service"><Edit3 size={14} /></button>
@@ -1803,6 +1866,17 @@ const statusLabel = (raw) => {
               </div>
 
               <div className="filter-group">
+                <label>Client:</label>
+                <input
+                  type="text"
+                  className="filter-input"
+                  placeholder="Name or part of name"
+                  value={filters.client}
+                  onChange={(e) => handleFilterChange('client', e.target.value)}
+                />
+              </div>
+
+              <div className="filter-group">
                 <label>Service Type:</label>
                 <select value={filters.serviceType} onChange={(e) => handleFilterChange('serviceType', e.target.value)} className="filter-select">
                   <option value="">All Types</option>
@@ -1836,7 +1910,7 @@ const statusLabel = (raw) => {
 
               <button
                 className="clear-filters-btn"
-                onClick={() => { setFilters({ partner: '', serviceType: '', status: '', team: '' }); setCurrentPage(1); }}
+                onClick={() => { setFilters({ partner: '', serviceType: '', status: '', team: '', client: '' }); setCurrentPage(1); }}
               >
                 <X size={16} /> Clear Filters
               </button>
@@ -1891,8 +1965,10 @@ const statusLabel = (raw) => {
                       <DollarSign size={16} /> Amount {renderSortIcon('finalValue')}
                     </div>
                     <div className="header-cell"><AlertCircle size={16} /> Status</div>
-                    <div className="header-cell" style={{ minWidth: 140 }}><Settings size={16} /> Actions</div>
-                  </div>
+                      <div className="header-cell" style={{ minWidth: 100 }}>
+                        <Settings size={16} /> Actions
+                      </div>
+                      </div>
 
                   <div className="table-body">
                     {services.data.map((service) => (
@@ -1976,8 +2052,8 @@ const statusLabel = (raw) => {
 
                         {/* Observations */}
                         <div className="table-cell">
-                          {service.observations
-                            ? <span title={service.observations} className="obs-flag"><AlertCircle size={14}/> Yes</span>
+                          {service.observations?.trim()
+                            ? <div className="observations-text">{service.observations}</div>
                             : <span className="no-obs">—</span>
                           }
                         </div>
@@ -2013,34 +2089,33 @@ const statusLabel = (raw) => {
                         </div>
 
                         {/* Status */}
-                        <div className="table-cell">
+                       <div className="table-cell">
                           {(() => {
                             const link = paymentIndex.get(service.id);
-                            const raw = link?.status || service.status?.id || 'RECORDED';
-                            const label = statusLabel(raw);
-                            const cls = `status-badge ${normalizePaymentStatus(raw).toLowerCase()}`;
-                            return <span className={cls} title={link?.paymentId ? `Payment #${link.paymentId}` : ''}>{label}</span>;
+                            const norm = normalizePaymentStatus(link?.status || 'not_linked'); // se não há vínculo: not_linked
+                            const cls  = `status-badge ${paymentStatusClassName(norm)}`;
+                            const lbl  = paymentStatusLabel(norm);
+                            const tip  = link?.paymentId ? `Payment #${link.paymentId}` : '';
+                            return <span className={cls} title={tip}>{lbl}</span>;
                           })()}
                         </div>
 
                         {/* Actions */}
                         <div className="table-cell">
-                          <div className="action-buttons" style={{ minWidth: 140 }}>
-                            <button className="btn btn--outline btn--sm" onClick={() => handleListEdit(service)} title="View/Edit">
-                              <Eye size={14} />
-                            </button>
-                            <button className="btn btn--outline btn--sm" onClick={() => handleListEdit(service)} title="Edit service">
-                              <Edit3 size={14} />
-                            </button>
+                          <div className="action-buttons" style={{ minWidth: 100 }}>
                             <button
                               className="btn btn--outline btn--sm"
-                              onClick={() => handleAddServiceToPayment(service)}
-                              title={paymentIndex.get(service.id) ? 'Já vinculado a um pagamento' : 'Adicionar ao pagamento'}
-                              disabled={!!paymentIndex.get(service.id)}
+                              onClick={() => handleListEdit(service)}
+                              title="Edit"
                             >
-                              <DollarSign size={14} />
+                              <Edit3 size={14} />
                             </button>
-                            <button className="btn btn--danger btn--sm" onClick={() => handleListDelete(service.id)} title="Delete service">
+
+                            <button
+                              className="btn btn--danger btn--sm"
+                              onClick={() => handleListDelete(service.id)}
+                              title="Delete"
+                            >
                               <Trash2 size={14} />
                             </button>
                           </div>

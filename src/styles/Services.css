@@ -782,3 +782,112 @@
 .empty-cart{ border:1px dashed #e5e7eb; border-radius:12px; padding:18px; text-align:center; color:#6b7280; }
 .empty-cart p{ margin:10px 0 0; font-weight:700; color:#374151; }
 .empty-cart span{ display:block; font-size:13px; margin-top:4px; }
+/* 1) Itens do grid podem encolher dentro da coluna (senão ‘vazam’ e cortam) */
+.services-container > * { 
+  min-width: 0;        /* IMPORTANTE p/ Grid */
+  min-height: 0;       /* permite scroll vertical interno */
+}
+
+/* 2) O card que envolve a tabela vira o ‘scroller’ (x e y) */
+.services-list-container{
+  overflow: visible;    /* deixa o filho controlar o scroll */
+}
+.services-table-container{
+  display: block;
+  max-width: 100%;
+  max-height: min(72vh, 900px);     /* ajuste como preferir */
+  overflow-x: auto;                 /* scroll horizontal */
+  overflow-y: auto;                 /* scroll vertical   */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;     /* evita “puxar” o body */
+}
+
+/* 3) A tabela pode crescer além do card e aciona o scroll */
+.services-table{
+  width: max-content;   /* cresce conforme o conteúdo */
+  min-width: 1120px;    /* seu valor atual; ajuste se quiser */
+}
+
+/* (opcional) header colado enquanto rola */
+.table-header{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #f8fafc;  /* garante contraste ao ficar sticky */
+}
+/* === [A] Uma única “fonte de verdade” para as colunas (alinha header + linhas) === */
+.services-table{
+  /* esquema padrão de 11 colunas */
+  --cols: 40px 110px
+          minmax(160px,1.2fr)  /* client */
+          minmax(160px,1fr)    /* partner */
+          100px                 /* team   */
+          minmax(140px,.9fr)    /* type   */
+          minmax(220px,1.6fr)   /* params */
+          minmax(180px,1.2fr)   /* obs    */
+          120px 120px 140px;    /* value | status | actions */
+
+  min-width: 1120px;   /* continua garantindo largura mínima */
+  width: 100%;         /* >>> volta a ocupar a largura disponível (se adaptar) */
+}
+
+.table-header,
+.table-row{ grid-template-columns: var(--cols); }
+
+/* === [B] Um ÚNICO scroller: o container da tabela (evita 2 barras e desalinho) === */
+.services-list-container{ overflow: hidden; }   /* desliga scroll do wrapper externo */
+.services-table-container{
+  display: block;
+  max-width: 100%;
+  max-height: min(72vh, 900px);
+  overflow: auto;                      /* x e y */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges; /* evita “jump” quando aparece a barra */
+}
+
+/* header fixo enquanto rola, alinhado às colunas */
+.table-header{
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f8fafc;
+}
+
+/* evita corte quando o grid pai encolhe */
+.services-list-container, .services-table-container, .services-table,
+.table-header, .table-row { min-width: 0; }
+
+/* === [C] Breakpoints: só mudamos a variável --cols (header e linhas seguem iguais) === */
+@media (max-width:1200px){
+  .services-table{
+    --cols: 36px 90px
+            minmax(140px,1.1fr) minmax(140px,1fr) 90px
+            minmax(120px,.9fr)  minmax(200px,1.4fr)
+            minmax(160px,1.1fr) 110px 100px 90px;
+  }
+}
+@media (max-width:1024px){
+  .services-table{
+    --cols: 32px 80px
+            minmax(120px,1fr) minmax(120px,1fr) 80px
+            minmax(110px,.8fr) minmax(160px,1.2fr)
+            minmax(140px,1fr) 100px 90px 80px;
+  }
+}
+/* Observations: quebrar linha e não cortar */
+.observations-text{
+  white-space: normal;
+  word-break: break-word;
+  overflow: visible;
+  line-height: 1.35;
+}
+
+/* A linha da tabela precisa alinhar pelo topo para crescer com o texto */
+.table-row{ align-items: start; }
+
+/* Na coluna 8 (Observations), liberar quebra e overflow */
+.table-row .table-cell:nth-child(8){
+  white-space: normal;
+  overflow: visible;
+}

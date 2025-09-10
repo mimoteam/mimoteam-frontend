@@ -102,14 +102,28 @@ const valueOfPayment = (p) => Number(p?.displayTotal ?? p?.totalAmount ?? p?.tot
 const SERVICE_STATUS_META = {
   'not linked': { label: 'not linked', color: '#9CA3AF' },
   pending:      { label: 'pending',    color: '#F59E0B' },
-  paid:         { label: 'paid',       color: '#10B981' },
+  shared:       { label: 'shared',     color: '#3B82F6' },
   declined:     { label: 'declined',   color: '#EF4444' },
+  approved:     { label: 'approved',   color: '#22C55E' },
+  paid:         { label: 'paid',       color: '#0EA5E9' },
 };
 const ServicePayStatus = ({ value }) => {
   const s = SERVICE_STATUS_META[value] || SERVICE_STATUS_META['not linked'];
   return <span className="pay-status" style={{ backgroundColor: s.color }}>{s.label}</span>;
 };
 
+// normalizador do status vindo do pagamento (ou da rota)
+const normalize = (v = '') => String(v).trim().toUpperCase();
+const mapPaymentToServiceStatus = (paymentStatus) => {
+  switch (normalize(paymentStatus)) {
+    case 'PAID':      return 'paid';
+    case 'APPROVED':  return 'approved';
+    case 'SHARED':    return 'shared';
+    case 'DECLINED':  return 'declined';
+    // PENDING, ON_HOLD, CREATING e desconhecidos caem em pending
+    default:          return 'pending';
+  }
+};
 /** ===================== Hook: parceiros ativos ===================== */
 const useActivePartners = () => {
   const [list, setList] = useState([]);
@@ -612,23 +626,25 @@ const Payments = () => {
 
   /** ===== Resolver combinado: rota + fallback local ===== */
   const resolveServicePayInfo = (serviceId) => {
-    const id = String(serviceId);
-    const fromApi = servicePayStatus.get(id);
-    if (fromApi) {
-      const p = fromApi.paymentId
-        ? payments.find(pp => String(pp.id || pp._id) === String(fromApi.paymentId))
-        : null;
-      return { status: fromApi.status, payment: p || null };
+  const id = String(serviceId);
+
+  // 1) Preferência: rota /paystatus
+  const fromApi = servicePayStatus.get(id);
+  if (fromApi) {
+    const st = normalize(fromApi.status);
+    if (!fromApi.paymentId || st === 'NOT_LINKED') {
+      return { status: 'not linked', payment: null };
     }
-    const p = paymentIndexByServiceId.get(id) || null;
-    if (!p) return { status: 'not linked', payment: null };
-    const raw = String(p.status || '').toLowerCase();
-    const status =
-      raw.includes('paid') ? 'paid'
-      : raw.includes('declin') ? 'declined'
-      : 'pending';
+    const p = payments.find(pp => String(pp.id || pp._id) === String(fromApi.paymentId)) || null;
+    const status = mapPaymentToServiceStatus(p?.status ?? fromApi.status);
     return { status, payment: p };
-  };
+  }
+
+  // 2) Fallback: olhar os payments carregados
+  const p = paymentIndexByServiceId.get(id) || null;
+  if (!p) return { status: 'not linked', payment: null };
+  return { status: mapPaymentToServiceStatus(p.status), payment: p };
+};
 
   /** ===================== Render ===================== */
   const currentPartnerName = selectedPartner
@@ -669,6 +685,8 @@ const Payments = () => {
           </div>
         </div>
       )}
+
+
 
       {/* HEADER */}
       <div className="pay-header">
@@ -806,9 +824,15 @@ const Payments = () => {
                 '—';
               const observation = s.observation || s.observations || s.note || s.notes || s.comment || s.comments || '';
 
-              const info = resolveServicePayInfo(s.id);
-              const val = info.status; // 'not linked' | 'pending' | 'paid' | 'declined'
-              const paidWeekKey = info.payment?.week?.key || info.payment?.weekKey || '';
+             const info = resolveServicePayInfo(s.id);
+                const val = info.status; // 'not linked' | 'pending' | 'shared' | 'declined' | 'approved' | 'paid'
+
+                const assignedStart = info.payment?.week?.start || info.payment?.weekStart || null;
+                const assignedEnd   = info.payment?.week?.end   || info.payment?.weekEnd   || null;
+                const assignedKey   = info.payment?.week?.key   || info.payment?.weekKey   || '';
+                const assignedWeekText = (assignedStart && assignedEnd)
+                  ? `${formatDate(assignedStart)} – ${formatDate(assignedEnd)}${assignedKey ? ` (${assignedKey})` : ''}`
+                  : '';
 
               return (
                 <div key={String(s.id)} className="tr">
@@ -826,17 +850,21 @@ const Payments = () => {
                   <div className="td">{serviceName}</div>
                   <div className="td">{s.park || '—'}</div>
                   <div className="td">{s.guests ?? '—'}</div>
-                  <div className="td" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={observation || '—'}>
-                    {observation || '—'}
-                  </div>
-                  <div className="td right">{formatCurrency(s.finalValue)}</div>
+                  <div className="td td--obs">
+                    <div className="obs-grid">{observation || '—'}</div>
+                  </div>   
+               <div className="td right">{formatCurrency(s.finalValue)}</div>
 
                   <div className="td center">
                     <ServicePayStatus value={val} />
                   </div>
-                  <div className="td center">
-                    {info.payment ? <span className="wk-chip"><Calendar size={12}/>{paidWeekKey || '—'}</span> : '—'}
-                  </div>
+              <div className="td center">
+                {info.payment ? (
+                  <span className="wk-chip" title={assignedWeekText}>
+                    <Calendar size={12}/> {assignedWeekText}
+                  </span>
+                ) : '—'}
+              </div>
                 </div>
               );
             })}
