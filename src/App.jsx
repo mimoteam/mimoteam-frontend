@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 //Login
-import './styles/Pages/Login.css';
+import './styles/pages/Login.css';
 
 // Providers / Pages
 import { CostsProvider } from './contexts/CostsContext';
