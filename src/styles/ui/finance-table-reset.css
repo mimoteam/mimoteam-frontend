@@ -1,0 +1,12 @@
+.services-table-container,
+.data-table-container,
+.table-scroll-x,
+.h-scroll,
+.table-scroll{
+  width:100%; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain; scrollbar-gutter: stable both-edges;
+}
+.table-scroll-x>table,
+.table-scroll>table,
+.h-scroll>table,
+.services-table-container>table{ min-width:720px; }

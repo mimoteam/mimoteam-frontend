@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Calendar
 } from 'lucide-react';
 import { api } from '../api/http';
-import '../styles/PartnerWallet.css';
+import '../styles/pages/PartnerWallet.css';
 
 /* ================= Helpers ================= */
 

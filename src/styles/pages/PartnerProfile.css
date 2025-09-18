@@ -1,0 +1,74 @@
+@import "src/styles/partner/PartnerTokens.css";
+
+/* Escopo dentro do layout mobile */
+.pml-wrap .partner-page, .pml-wrap .partner-page * { box-sizing: border-box; }
+
+.pml-wrap .partner-page{
+  --ring: rgba(46,148,185,.30);
+  display:grid; gap:14px; padding:12px; border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--c-fourth) 0%, var(--c-third) 100%);
+  overflow-x: clip;
+  color: var(--c-second);
+}
+
+/* Card raiz */
+.pml-wrap .partner-page .profile-card{
+  background:#fff;
+  border:1px solid rgba(46,148,185,.25);
+  border-radius:14px;
+  padding:12px;
+  display:grid; gap:16px; isolation:isolate;
+  box-shadow: var(--shadow-3d);
+}
+
+/* Header + Avatar */
+.pml-wrap .partner-page .profile-header{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+}
+.pml-wrap .partner-page .profile-avatar img,
+.pml-wrap .partner-page .profile-avatar .profile-avatar-fallback{
+  width:84px; height:84px; border-radius:50%;
+  border:1px solid #E2E8F0; background:#e2e8f0; object-fit:cover; display:block;
+}
+.pml-wrap .partner-page .profile-avatar-fallback{
+  display:flex; align-items:center; justify-content:center; font-weight:800; color:#334155;
+}
+
+/* Ações de avatar */
+.pml-wrap .partner-page .profile-avatar-actions{ display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pml-wrap .partner-page .profile-upload{ position:relative; overflow:hidden; }
+.pml-wrap .partner-page .profile-upload input[type="file"]{ position:absolute; inset:0; opacity:0; cursor:pointer; }
+
+/* Linhas/inputs */
+.pml-wrap .partner-page .profile-rows{ display:grid; gap:10px; }
+.pml-wrap .partner-page .profile-row{
+  display:grid; grid-template-columns: 160px 1fr; align-items:center; min-height:44px;
+}
+@media (max-width:520px){
+  .pml-wrap .partner-page .profile-row{ grid-template-columns: 120px 1fr; }
+}
+.pml-wrap .partner-page .pc-label{ font-weight:800; color:#334155; }
+.pml-wrap .partner-page .pc-value{ min-width:0; }
+
+.pml-wrap .partner-page .profile-edit{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pml-wrap .partner-page .profile-input{
+  height:40px; padding:0 12px;
+  border:1px solid #E2E8F0; border-radius:10px; background:#fff;
+  color:var(--c-second); font-size:14px; min-width:0; outline:none;
+  transition:border-color .2s ease, box-shadow .2s ease;
+}
+.pml-wrap .partner-page .profile-input:focus{ border-color: var(--c-first); box-shadow:0 0 0 3px rgba(46,148,185,.25); }
+.pml-wrap .partner-page .profile-input:disabled{ background:#F8FAFC; color:#94A3B8; }
+
+/* Ajuda */
+.pml-wrap .partner-page .profile-hint{ font-size:12px; color:#64748B; }
+
+/* Buttons locais (não conflita com globais) */
+.pml-wrap .partner-page .btn{
+  border:1px solid #CBD5E1; background:#fff; border-radius:10px;
+  padding:10px 14px; cursor:pointer; font-weight:800; color:#0f172a;
+}
+.pml-wrap .partner-page .btn-primary{
+  background: linear-gradient(180deg, var(--c-first), #2384a9);
+  border-color:#1E40AF; color:#fff;
+}

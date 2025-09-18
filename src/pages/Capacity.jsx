@@ -1,7 +1,8 @@
-/* arquivo completo, com 3 mudanças: 
-   (a) depois de book/unbook, recarrega avail + capacity
-   (b) em setDayForPartner, recarrega capacity no sucesso
-   (c) mantém otimista com rollback no catch
+/* arquivo completo, com 4 mudanças principais:
+   (a) Tabs "Availability / Dashboard"
+   (b) depois de book/unbook, recarrega avail + capacity (mantido)
+   (c) usa botões globais .btn/.btn--primary/.btn--outline
+   (d) Dashboard: rankings (mês atual e mês anterior) + fila de rotação
 */
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -15,10 +16,11 @@ import {
   Lock,
   Users as UsersIcon,
 } from "lucide-react";
-import "../styles/Capacity.css";
+import "../styles/pages/Capacity.css";
 
 import * as UsersApi from "../api/users";
 import * as AvApi from "../api/availability";
+import { fetchServices as fetchServicesApi } from "../api/services";
 
 /* ===== Helpers ===== */
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -101,8 +103,59 @@ const fmtMMMdd = (keyOrDate) => {
   if (isNaN(dt.getTime())) return String(keyOrDate);
   return `${MONTHS_EN[dt.getMonth()]}/${pad2(dt.getDate())}`;
 };
+const firstOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+const lastOfMonth  = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+const ymdStr = (d) => ymd(new Date(d));
+
+/* ===== Soma $ de serviços por partner e range ===== */
+async function sumServicesAmount(partnerId, fromYmd, toYmd) {
+  let page = 1;
+  let totalPages = 1;
+  const PAGE = 500;
+  let sum = 0;
+
+  const inRange = (dateYmd) => dateYmd >= fromYmd && dateYmd <= toYmd;
+
+  while (page <= totalPages) {
+    let res;
+    try {
+      res = await fetchServicesApi({
+        page, pageSize: PAGE,
+        sortBy: "serviceDate", sortDir: "asc",
+        filters: {
+          partner: partnerId,
+          serviceDateFrom: fromYmd,
+          serviceDateTo: toYmd,
+        },
+      });
+    } catch {
+      res = null;
+    }
+
+    const arr = Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []);
+    const items = arr || [];
+
+    for (const it of items) {
+      const pid = it?.partnerId || it?.partner?._id || it?.partner?.id || it?.partner || it?.partner_id;
+      const date = String(it?.serviceDate || it?.date || "");
+      if (String(pid) === String(partnerId) && inRange(date)) {
+        const v = Number(it?.finalValue ?? it?.value ?? 0);
+        if (!Number.isNaN(v)) sum += v;
+      }
+    }
+
+    const tp = Number(res?.totalPages || 0);
+    if (tp) totalPages = tp;
+    if (!tp && items.length < PAGE) break;
+    page += 1;
+  }
+  return Math.round(sum * 100) / 100;
+}
 
 export default function Capacity() {
+  /* ===== Tabs ===== */
+  const [tab, setTab] = useState("availability"); // 'availability' | 'dashboard'
+
   const [partnersAll, setPartnersAll] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
@@ -198,7 +251,7 @@ export default function Capacity() {
     }
   };
 
-  useEffect(() => { loadSelectedPartnerAvail(); }, [partnerId, baseMonth]);
+  useEffect(() => { if (tab === "availability") loadSelectedPartnerAvail(); }, [partnerId, baseMonth, tab]);
 
   // janela rolante para capacity
   const [rangeDays, setRangeDays] = useState(90);
@@ -250,7 +303,7 @@ export default function Capacity() {
     }
   };
 
-  useEffect(() => { loadCapacityAvail(); }, [partnersFiltered, rangeDays]);
+  useEffect(() => { if (tab === "availability") loadCapacityAvail(); }, [partnersFiltered, rangeDays, tab]);
 
   /* ===== Seleção e ações do admin ===== */
   const [selectedDayKey, setSelectedDayKey] = useState("");
@@ -405,6 +458,74 @@ export default function Capacity() {
     return "cap-crit";
   };
 
+  /* ===== Dashboard data ===== */
+  const [dashLoading, setDashLoading] = useState(false);
+  const [rankBooked, setRankBooked] = useState([]);        // mês atual
+  const [rankFinancePrev, setRankFinancePrev] = useState([]); // mês anterior ($)
+  const [rotation, setRotation] = useState([]);            // fila (mês atual)
+  const [dashPage1, setDashPage1] = useState(1);
+  const [dashPage2, setDashPage2] = useState(1);
+  const [dashRows, setDashRows] = useState(15);
+  const today = new Date();
+  const curFrom = ymdStr(firstOfMonth(today));
+  const curTo   = ymdStr(lastOfMonth(today));
+  const prevRef = addMonths(today, -1);
+  const prevFrom = ymdStr(firstOfMonth(prevRef));
+  const prevTo   = ymdStr(lastOfMonth(prevRef));
+
+  useEffect(() => {
+    if (tab !== "dashboard") return;
+    if (!partnersFiltered.length) { setRankBooked([]); setRankFinancePrev([]); setRotation([]); return; }
+
+    (async () => {
+      setDashLoading(true);
+      try {
+        const daysInCur = lastOfMonth(today).getDate();
+
+        const results = await Promise.all(partnersFiltered.map(async (p) => {
+          // disponibilidade mês atual
+          let busy = 0, unavail = 0;
+          try {
+            const items = await AvApi.getAvailability(p.id, curFrom, curTo);
+            for (const it of items || []) {
+              if (it?.state === "busy") busy += 1;
+              else if (it?.state === "unavailable") unavail += 1;
+            }
+          } catch {}
+
+          const available = Math.max(0, daysInCur - busy - unavail);
+
+          // $ mês atual e mês anterior
+          let amountCur = 0, amountPrev = 0;
+          try { amountCur = await sumServicesAmount(p.id, curFrom, curTo); } catch {}
+          try { amountPrev = await sumServicesAmount(p.id, prevFrom, prevTo); } catch {}
+
+          return {
+            partner: p,
+            booked: busy,
+            unavailable: unavail,
+            available,
+            amountCur,
+            amountPrev,
+          };
+        }));
+
+        const rb = [...results].sort((a,b) => (b.booked - a.booked) || (a.amountCur - b.amountCur));
+        const rf = [...results].sort((a,b) => (b.amountPrev - a.amountPrev) || (b.booked - a.booked));
+        const rq = [...results].sort((a,b) => (a.amountCur - b.amountCur) || (a.booked - b.booked));
+
+        setRankBooked(rb);
+        setRankFinancePrev(rf);
+        setRotation(rq);
+        setDashPage1(1);
+        setDashPage2(1);
+      } finally {
+        setDashLoading(false);
+      }
+    })();
+  }, [tab, partnersFiltered]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ===== Render ===== */
   return (
     <div className="capacity-page">
 
@@ -415,7 +536,7 @@ export default function Capacity() {
             <CalendarDays size={18} />
           </span>
           <span className="cap-title-text">
-            Availability {loadingUsers || loadingCap ? "• syncing…" : ""}
+            Capacity {loadingUsers ? "• loading users…" : ""}
           </span>
         </div>
 
@@ -444,330 +565,489 @@ export default function Capacity() {
               ))}
             </select>
           </div>
-        </div>
-      </div>
 
-      {/* ==== 3 Calendars (90 days) ==== */}
-      <div className="tri-head">
-        <button
-          className="nav-btn icon"
-          onClick={() => setBaseMonth(addMonths(baseMonth, -3))}
-          type="button"
-          aria-label="Previous 3 months"
-        >
-          <ChevronLeft size={22} />
-        </button>
-
-        <div className="tri-title">
-          Next 90 days {loadingAvailSel ? "• loading…" : ""}
-        </div>
-
-        <button
-          className="nav-btn icon"
-          onClick={() => setBaseMonth(addMonths(baseMonth, +3))}
-          type="button"
-          aria-label="Next 3 months"
-        >
-          <ChevronRight size={22} />
-        </button>
-      </div>
-
-      <div className="tri-grid">
-        {months.map((m) => {
-          const matrix = buildMonthMatrix(m);
-          const monthTitle = fmMonth.format(m);
-          return (
-            <div className="month-card" key={m.toISOString()}>
-              <div className="month-title">{monthTitle}</div>
-              <div className="cal-grid cal-grid-head">
-                {weekdays.map((w) => (<div className="cell" key={w}>{w}</div>))}
-              </div>
-              <div className="cal-grid cal-grid-body">
-                {matrix.map((c) =>
-                  c.type === "void" ? (
-                    <div className="cell void" key={c.key} aria-hidden="true" />
-                  ) : (() => {
-                      const k = c.key;
-                      const meta = metaOf(avail, k);
-                      const st = meta.state;
-                      const isSelected = k === selectedDayKey;
-                      const Icon = st === STATE.BUSY ? Lock : st === STATE.UNAVAILABLE ? X : Check;
-                      return (
-                        <button
-                          key={k}
-                          className={[
-                            "cell","day",st,
-                            k === ymd(new Date()) ? "today" : "",
-                            isSelected ? "selected" : ""
-                          ].join(" ")}
-                          onClick={() => onDayClick(c.date)} // apenas seleciona
-                          aria-label={`${k} – ${st}${meta.by ? ` (${meta.by})` : ""}`}
-                          aria-pressed={isSelected}
-                          type="button"
-                        >
-                          <div className="daytop">
-                            <span className="num">{c.date.getDate()}</span>
-                          </div>
-                          <span
-                            className={[
-                              "state-icon",
-                              st === STATE.BUSY ? "busy" : st === STATE.UNAVAILABLE ? "unavail" : "ok"
-                            ].join(" ")}
-                            aria-hidden="true"
-                            title={meta.by ? `by ${meta.by}` : ""}
-                          >
-                            <Icon size={12} />
-                          </span>
-                          <div className="dayfoot" />
-                        </button>
-                      );
-                    })()
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Actions */}
-      <div className="cap-actions">
-        <button
-          className="btn-primary btn btn--primary"
-          type="button"
-          disabled={
-            !selectedDayKey ||
-            !partnerId ||
-            selectedStatus === STATE.UNAVAILABLE ||
-            selectedStatus === STATE.BUSY
-          }
-          onClick={bookSelectedDay}
-          title="Book selected date"
-        >
-          <Lock size={14} /><span>Book date</span>
-        </button>
-        <button
-          className="btn-outline btn btn--outline"
-          type="button"
-          disabled={
-            !selectedDayKey ||
-            !partnerId ||
-            selectedStatus !== STATE.BUSY ||
-            (selectedMeta?.by !== "admin")
-          }
-          onClick={unbookSelectedDay}
-          title="Unbook selected date"
-        >
-          <X size={14} /><span>Unbook</span>
-        </button>
-      </div>
-
-      {/* ==== Capacity Overview ==== */}
-      <div className="cap-overview">
-        <div className="ov-header">
-          <div className="ov-title"><UsersIcon size={16} /><span>Capacity Overview</span></div>
-          <div className="range-switch">
-            {[15, 30, 60, 90, 120].map((n) => (
-              <button key={n} type="button" className={`chip ${rangeDays === n ? "on" : ""}`} onClick={() => setRangeDays(n)}>
-                Next {n}d
-              </button>
-            ))}
+          <div className="cap-tabs">
+            <button
+              type="button"
+              className={`btn ${tab === "availability" ? "btn--primary" : "btn--outline"}`}
+              onClick={() => setTab("availability")}
+            >
+              Availability
+            </button>
+            <button
+              type="button"
+              className={`btn ${tab === "dashboard" ? "btn--primary" : "btn--outline"}`}
+              onClick={() => setTab("dashboard")}
+            >
+              Dashboard
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* KPIs */}
-        {(() => {
-          let av = 0, bz = 0, un = 0;
-          const totalDays = nextDays.length;
-          nextDays.forEach(({ key }) => {
-            const c = capacity[key] || { available: 0, busy: 0, unavailable: 0 };
-            av += c.available; bz += c.busy; un += c.unavailable;
-          });
-          const teamSize = partnersFiltered.length || 1;
-          const pct = totalDays > 0 ? Math.round(((av / totalDays) / teamSize) * 100) : 0;
+      {/* ===================== TAB: AVAILABILITY ===================== */}
+      {tab === "availability" && (
+        <>
+          {/* ==== 3 Calendars (90 days) ==== */}
+          <div className="tri-head">
+            <button
+              className="nav-btn icon btn btn--outline"
+              onClick={() => setBaseMonth(addMonths(baseMonth, -3))}
+              type="button"
+              aria-label="Previous 3 months"
+            >
+              <ChevronLeft size={22} />
+            </button>
 
-          return (
-            <div className="stat-cards">
-              <div className="stat-card ok"><div className="sc-value">{av}</div><div className="sc-label">Available slots (sum)</div></div>
-              <div className="stat-card busy"><div className="sc-value">{bz}</div><div className="sc-label">Booked (sum)</div></div>
-              <div className="stat-card unavail"><div className="sc-value">{un}</div><div className="sc-label">Unavailable (sum)</div></div>
-              <div className="stat-card pct"><div className="sc-value">{pct}%</div><div className="sc-label">Avg. availability</div></div>
+            <div className="tri-title">
+              Next 90 days {loadingAvailSel ? "• loading…" : ""}
             </div>
-          );
-        })()}
 
-        {/* Heat strip */}
-        <div className="heat-strip" aria-label="Daily capacity">
-          {nextDays.map(({ key }) => {
-            const c = capacity[key]; const ratio = c?.ratio ?? 0;
-            const cls = capClass(ratio);
-            const label = `${fmtMMMdd(key)} • ${c?.available || 0}/${c?.total || 0} free`;
-            return (
-              <button
-                key={key}
-                className={`hs-cell ${cls}`}
-                title={label}
-                onClick={() => setPage(Math.max(1, Math.ceil((nextDays.findIndex(d => d.key === key)+1)/rowsPerPage)))}
-                type="button"
-              />
-            );
-          })}
-        </div>
-
-        {/* Table */}
-        <div className="ov-table-wrap">
-          <div className="ov-table-title">
-            Capacity per day {loadingCap ? "• loading…" : ""}
+            <button
+              className="nav-btn icon btn btn--outline"
+              onClick={() => setBaseMonth(addMonths(baseMonth, +3))}
+              type="button"
+              aria-label="Next 3 months"
+            >
+              <ChevronRight size={22} />
+            </button>
           </div>
-          <div className="ov-table-scroll">
-            <table className="ov-table">
-              <thead>
-                <tr>
-                  <th>DATE</th>
-                  <th>TOTAL PARTNERS</th>
-                  <th>AVAILABLE</th>
-                  <th>BOOKED</th>
-                  <th>VIEW</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sliceDays.map(({ key }) => {
-                  const c = capacity[key] || { total: 0, available: 0, busy: 0 };
-                  const low = c.available < 2;
-                  return (
-                    <tr key={key} className={low ? "row-low" : ""}>
-                      <td className="td-date">{fmtMMMdd(key)}</td>
-                      <td className="td-center"><span className="badge total">{c.total}</span></td>
-                      <td className="td-center"><span className={`badge ${low ? "ok low-blink" : "ok"}`}>{c.available}</span></td>
-                      <td className="td-center"><span className="badge busy">{c.busy}</span></td>
-                      <td className="td-center">
-                        <button
-                          className="mini-btn btn btn--outline btn--sm"
-                          onClick={() => openRosterForDay(key)}
-                          type="button"
-                          title="View available partners for this day"
-                        >
-                          View
-                        </button>
-                      </td>
+
+          <div className="tri-grid">
+            {months.map((m) => {
+              const matrix = buildMonthMatrix(m);
+              const monthTitle = fmMonth.format(m);
+              return (
+                <div className="month-card" key={m.toISOString()}>
+                  <div className="month-title">{monthTitle}</div>
+                  <div className="cal-grid cal-grid-head">
+                    {weekdays.map((w) => (<div className="cell" key={w}>{w}</div>))}
+                  </div>
+                  <div className="cal-grid cal-grid-body">
+                    {matrix.map((c) =>
+                      c.type === "void" ? (
+                        <div className="cell void" key={c.key} aria-hidden="true" />
+                      ) : (() => {
+                          const k = c.key;
+                          const meta = metaOf(avail, k);
+                          const st = meta.state;
+                          const isSelected = k === selectedDayKey;
+                          const Icon = st === STATE.BUSY ? Lock : st === STATE.UNAVAILABLE ? X : Check;
+                          return (
+                            <button
+                              key={k}
+                              className={[
+                                "cell","day",st,
+                                k === ymd(new Date()) ? "today" : "",
+                                isSelected ? "selected" : ""
+                              ].join(" ")}
+                              onClick={() => onDayClick(c.date)} // apenas seleciona
+                              aria-label={`${k} – ${st}${meta.by ? ` (${meta.by})` : ""}`}
+                              aria-pressed={isSelected}
+                              type="button"
+                            >
+                              <div className="daytop">
+                                <span className="num">{c.date.getDate()}</span>
+                              </div>
+                              <span
+                                className={[
+                                  "state-icon",
+                                  st === STATE.BUSY ? "busy" : st === STATE.UNAVAILABLE ? "unavail" : "ok"
+                                ].join(" ")}
+                                aria-hidden="true"
+                                title={meta.by ? `by ${meta.by}` : ""}
+                              >
+                                <Icon size={12} />
+                              </span>
+                              <div className="dayfoot" />
+                            </button>
+                          );
+                        })()
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Actions */}
+          <div className="cap-actions">
+            <button
+              className="btn btn--primary"
+              type="button"
+              disabled={
+                !selectedDayKey ||
+                !partnerId ||
+                selectedStatus === STATE.UNAVAILABLE ||
+                selectedStatus === STATE.BUSY
+              }
+              onClick={bookSelectedDay}
+              title="Book selected date"
+            >
+              <Lock size={14} /><span>Book date</span>
+            </button>
+            <button
+              className="btn btn--outline"
+              type="button"
+              disabled={
+                !selectedDayKey ||
+                !partnerId ||
+                selectedStatus !== STATE.BUSY ||
+                (selectedMeta?.by !== "admin")
+              }
+              onClick={unbookSelectedDay}
+              title="Unbook selected date"
+            >
+              <X size={14} /><span>Unbook</span>
+            </button>
+          </div>
+
+          {/* ==== Capacity Overview ==== */}
+          <div className="cap-overview">
+            <div className="ov-header">
+              <div className="ov-title"><UsersIcon size={16} /><span>Capacity Overview</span></div>
+              <div className="range-switch">
+                {[15, 30, 60, 90, 120].map((n) => (
+                  <button key={n} type="button" className={`chip ${rangeDays === n ? "on" : ""}`} onClick={() => setRangeDays(n)}>
+                    Next {n}d
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* KPIs */}
+            {(() => {
+              let av = 0, bz = 0, un = 0;
+              const totalDays = nextDays.length;
+              nextDays.forEach(({ key }) => {
+                const c = capacity[key] || { available: 0, busy: 0, unavailable: 0 };
+                av += c.available; bz += c.busy; un += c.unavailable;
+              });
+              const teamSize = partnersFiltered.length || 1;
+              const pct = totalDays > 0 ? Math.round(((av / totalDays) / teamSize) * 100) : 0;
+
+              return (
+                <div className="stat-cards">
+                  <div className="stat-card ok"><div className="sc-value">{av}</div><div className="sc-label">Available slots (sum)</div></div>
+                  <div className="stat-card busy"><div className="sc-value">{bz}</div><div className="sc-label">Booked (sum)</div></div>
+                  <div className="stat-card unavail"><div className="sc-value">{un}</div><div className="sc-label">Unavailable (sum)</div></div>
+                  <div className="stat-card pct"><div className="sc-value">{pct}%</div><div className="sc-label">Avg. availability</div></div>
+                </div>
+              );
+            })()}
+
+            {/* Heat strip */}
+            <div className="heat-strip" aria-label="Daily capacity">
+              {nextDays.map(({ key }) => {
+                const c = capacity[key]; const ratio = c?.ratio ?? 0;
+                const cls = capClass(ratio);
+                const label = `${fmtMMMdd(key)} • ${c?.available || 0}/${c?.total || 0} free`;
+                return (
+                  <button
+                    key={key}
+                    className={`hs-cell ${cls}`}
+                    title={label}
+                    onClick={() => setPage(Math.max(1, Math.ceil((nextDays.findIndex(d => d.key === key)+1)/rowsPerPage)))}
+                    type="button"
+                  />
+                );
+              })}
+            </div>
+
+            {/* Table */}
+            <div className="ov-table-wrap">
+              <div className="ov-table-title">
+                Capacity per day {loadingCap ? "• loading…" : ""}
+              </div>
+              <div className="ov-table-scroll">
+                <table className="ov-table">
+                  <thead>
+                    <tr>
+                      <th>DATE</th>
+                      <th>TOTAL PARTNERS</th>
+                      <th>AVAILABLE</th>
+                      <th>BOOKED</th>
+                      <th>VIEW</th>
                     </tr>
-                  );
-                })}
-                {!sliceDays.length && (
-                  <tr><td colSpan={5} className="td-empty">No data for the selected range.</td></tr>
-                )}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {sliceDays.map(({ key }) => {
+                      const c = capacity[key] || { total: 0, available: 0, busy: 0 };
+                      const low = c.available < 2;
+                      return (
+                        <tr key={key} className={low ? "row-low" : ""}>
+                          <td className="td-date">{fmtMMMdd(key)}</td>
+                          <td className="td-center"><span className="badge total">{c.total}</span></td>
+                          <td className="td-center"><span className={`badge ${low ? "ok low-blink" : "ok"}`}>{c.available}</span></td>
+                          <td className="td-center"><span className="badge busy">{c.busy}</span></td>
+                          <td className="td-center">
+                            <button
+                              className="mini-btn btn btn--outline btn--sm"
+                              onClick={() => openRosterForDay(key)}
+                              type="button"
+                              title="View available partners for this day"
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!sliceDays.length && (
+                      <tr><td colSpan={5} className="td-empty">No data for the selected range.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              <div className="pager">
+                <div className="pager-left">
+                  <span className="pager-info">
+                    Showing <strong>{idxStart + 1}</strong>–<strong>{Math.min(idxStart + rowsPerPage, totalRows)}</strong> of <strong>{totalRows}</strong> days
+                  </span>
+                  <label className="rowsel">
+                    Rows:
+                    <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))}>
+                      {[10, 15, 20, 30, 60].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="pager-buttons">
+                  <button
+                    className="pg-btn icon"
+                    onClick={() => setPage(1)}
+                    disabled={page === 1}
+                    type="button"
+                    aria-label="First page"
+                  >
+                    <ChevronsLeft size={18} />
+                  </button>
+                  <button
+                    className="pg-btn icon"
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    type="button"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+
+                  <span className="pg-sep">Page <b>{page}</b> / {totalPages}</span>
+
+                  <button
+                    className="pg-btn icon"
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    type="button"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                  <button
+                    className="pg-btn icon"
+                    onClick={() => setPage(totalPages)}
+                    disabled={page === totalPages}
+                    type="button"
+                    aria-label="Last page"
+                  >
+                    <ChevronsRight size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Pagination */}
-          <div className="pager">
-            <div className="pager-left">
-              <span className="pager-info">
-                Showing <strong>{idxStart + 1}</strong>–<strong>{Math.min(idxStart + rowsPerPage, totalRows)}</strong> of <strong>{totalRows}</strong> days
-              </span>
-              <label className="rowsel">
-                Rows:
-                <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))}>
-                  {[10, 15, 20, 30, 60].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
-            </div>
-            <div className="pager-buttons">
-              <button
-                className="pg-btn icon"
-                onClick={() => setPage(1)}
-                disabled={page === 1}
-                type="button"
-                aria-label="First page"
-              >
-                <ChevronsLeft size={18} />
-              </button>
-              <button
-                className="pg-btn icon"
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                type="button"
-                aria-label="Previous page"
-              >
-                <ChevronLeft size={18} />
-              </button>
+          {/* ===== Roster ===== */}
+          {showRoster && (
+            <div className="cap-overlay" onClick={closeRoster}>
+              <div className="cap-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-head">
+                  <strong>
+                    Available partners — {fmtMMMdd(rosterDayKey)}
+                  </strong>
+                  <button className="icon-btn" onClick={closeRoster} type="button" aria-label="Close">✕</button>
+                </div>
 
-              <span className="pg-sep">Page <b>{page}</b> / {totalPages}</span>
+                <div className="modal-body">
+                  {(() => {
+                    const availPartners = partnersFiltered.filter((p) => {
+                      const st = statusOf(calOf(p.id), rosterDayKey);
+                      return st === STATE.AVAILABLE;
+                    });
 
-              <button
-                className="pg-btn icon"
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                type="button"
-                aria-label="Next page"
-              >
-                <ChevronRight size={18} />
-              </button>
-              <button
-                className="pg-btn icon"
-                onClick={() => setPage(totalPages)}
-                disabled={page === totalPages}
-                type="button"
-                aria-label="Last page"
-              >
-                <ChevronsRight size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ===== Roster ===== */}
-      {showRoster && (
-        <div className="cap-overlay" onClick={closeRoster}>
-          <div className="cap-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <strong>
-                Available partners — {fmtMMMdd(rosterDayKey)}
-              </strong>
-              <button className="icon-btn" onClick={closeRoster} type="button" aria-label="Close">✕</button>
-            </div>
-
-            <div className="modal-body">
-              {(() => {
-                const availPartners = partnersFiltered.filter((p) => {
-                  const st = statusOf(calOf(p.id), rosterDayKey);
-                  return st === STATE.AVAILABLE;
-                });
-
-                if (!availPartners.length) {
-                  return (
-                    <div className="ro-empty">
-                      No available partners for {fmtMMMdd(rosterDayKey)}.
-                    </div>
-                  );
-                }
-
-                return availPartners.map((p) => (
-                  <div key={p.id} className="ro-row available">
-                    <div className="ro-name">
-                      <span className="ro-dot" />
-                      <div>
-                        <div style={{ fontWeight: 700 }}>
-                          {toTitleCase(p.fullName || p.login || p.email || p.id)}
+                    if (!availPartners.length) {
+                      return (
+                        <div className="ro-empty">
+                          No available partners for {fmtMMMdd(rosterDayKey)}.
                         </div>
-                        <div className="ro-team">{displayTeam(unifyTeam(getTeam(p)) || "Unassigned")}</div>
+                      );
+                    }
+
+                    return availPartners.map((p) => (
+                      <div key={p.id} className="ro-row available">
+                        <div className="ro-name">
+                          <span className="ro-dot" />
+                          <div>
+                            <div style={{ fontWeight: 700 }}>
+                              {toTitleCase(p.fullName || p.login || p.email || p.id)}
+                            </div>
+                            <div className="ro-team">{displayTeam(unifyTeam(getTeam(p)) || "Unassigned")}</div>
+                          </div>
+                        </div>
+
+                        <div className="btn-group">
+                          <button
+                            className="btn btn--primary btn--sm"
+                            type="button"
+                            onClick={() => setDayForPartner(p.id, rosterDayKey, STATE.BUSY)}
+                            title="Book this partner for the selected day"
+                          >
+                            Book
+                          </button>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ===================== TAB: DASHBOARD ===================== */}
+      {tab === "dashboard" && (
+        <div className="dash-wrap">
+          <div className="dash-head">
+            <div className="cap-title">
+              <UsersIcon size={18} />
+              <span>Capacity Dashboard</span>
+            </div>
+            <div className="dash-sub">
+              Current month: <b>{curFrom}</b> – <b>{curTo}</b> • Previous month: <b>{prevFrom}</b> – <b>{prevTo}</b> {dashLoading ? " • loading…" : ""}
+            </div>
+          </div>
+
+          <div className="dash-two">
+            {/* ==== Ranking por Booked (mês atual) ==== */}
+            <div className="dash-card">
+              <h3>Ranking — Booked (current month)</h3>
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th style={{width: 36}}>#</th>
+                    <th>Partner</th>
+                    <th>Booked</th>
+                    <th>Unavailable</th>
+                    <th>Available</th>
+                    <th>$ Month-to-date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rankBooked
+                    .slice((dashPage1 - 1) * dashRows, (dashPage1 - 1) * dashRows + dashRows)
+                    .map((row, idx) => (
+                    <tr key={row.partner.id}>
+                      <td className="dash-num">{(dashPage1 - 1) * dashRows + idx + 1}</td>
+                      <td title={row.partner.fullName}>{toTitleCase(row.partner.fullName || row.partner.login || row.partner.email || row.partner.id)}</td>
+                      <td className="dash-num">{row.booked}</td>
+                      <td className="dash-num">{row.unavailable}</td>
+                      <td className="dash-num">{row.available}</td>
+                      <td className="dash-money">${row.amountCur.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                  {!rankBooked.length && (
+                    <tr><td colSpan={6}>No data.</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <div className="dash-pager">
+                <div>
+                  Rows:
+                  <select value={dashRows} onChange={(e) => { setDashRows(Number(e.target.value)); setDashPage1(1); setDashPage2(1); }} style={{ marginLeft: 6 }}>
+                    {[10, 15, 20, 30].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <button className="btn btn--outline btn--sm" onClick={() => setDashPage1(1)} disabled={dashPage1 === 1}>First</button>
+                  <button className="btn btn--outline btn--sm" onClick={() => setDashPage1(p => Math.max(1, p - 1))} disabled={dashPage1 === 1}>Prev</button>
+                  <span style={{ margin: "0 8px" }}>Page <b>{dashPage1}</b> / {Math.max(1, Math.ceil(rankBooked.length / dashRows))}</span>
+                  <button className="btn btn--outline btn--sm" onClick={() => setDashPage1(p => Math.min(Math.max(1, Math.ceil(rankBooked.length / dashRows)), p + 1))} disabled={dashPage1 >= Math.ceil(rankBooked.length / dashRows)}>Next</button>
+                  <button className="btn btn--outline btn--sm" onClick={() => setDashPage1(Math.max(1, Math.ceil(rankBooked.length / dashRows)))} disabled={dashPage1 >= Math.ceil(rankBooked.length / dashRows)}>Last</button>
+                </div>
+              </div>
+            </div>
+
+            {/* ==== Ranking financeiro (mês anterior) ==== */}
+            <div className="dash-card">
+              <h3>Financial ranking — Previous month</h3>
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th style={{width: 36}}>#</th>
+                    <th>Partner</th>
+                    <th>$ Previous month</th>
+                    <th>Booked (current)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rankFinancePrev
+                    .slice((dashPage2 - 1) * dashRows, (dashPage2 - 1) * dashRows + dashRows)
+                    .map((row, idx) => (
+                    <tr key={row.partner.id}>
+                      <td className="dash-num">{(dashPage2 - 1) * dashRows + idx + 1}</td>
+                      <td title={row.partner.fullName}>{toTitleCase(row.partner.fullName || row.partner.login || row.partner.email || row.partner.id)}</td>
+                      <td className="dash-money">${row.amountPrev.toFixed(2)}</td>
+                      <td className="dash-num">{row.booked}</td>
+                    </tr>
+                  ))}
+                  {!rankFinancePrev.length && (
+                    <tr><td colSpan={4}>No data.</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <div className="dash-pager">
+                <div>
+                  Rows:
+                  <select value={dashRows} onChange={(e) => { setDashRows(Number(e.target.value)); setDashPage1(1); setDashPage2(1); }} style={{ marginLeft: 6 }}>
+                    {[10, 15, 20, 30].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <button className="btn btn--outline btn--sm" onClick={() => setDashPage2(1)} disabled={dashPage2 === 1}>First</button>
+                  <button className="btn btn--outline btn--sm" onClick={() => setDashPage2(p => Math.max(1, p - 1))} disabled={dashPage2 === 1}>Prev</button>
+                  <span style={{ margin: "0 8px" }}>Page <b>{dashPage2}</b> / {Math.max(1, Math.ceil(rankFinancePrev.length / dashRows))}</span>
+                  <button className="btn btn--outline btn--sm" onClick={() => setDashPage2(p => Math.min(Math.max(1, Math.ceil(rankFinancePrev.length / dashRows)), p + 1))} disabled={dashPage2 >= Math.ceil(rankFinancePrev.length / dashRows)}>Next</button>
+                  <button className="btn btn--outline btn--sm" onClick={() => setDashPage2(Math.max(1, Math.ceil(rankFinancePrev.length / dashRows)))} disabled={dashPage2 >= Math.ceil(rankFinancePrev.length / dashRows)}>Last</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ==== Queue / Next in rotation ==== */}
+          <div className="dash-card">
+            <h3>Next in rotation (balance by $ month-to-date)</h3>
+            <div className="queue-list">
+              {rotation.map((row, idx) => (
+                <div className="queue-item" key={row.partner.id}>
+                  <div className="queue-left">
+                    <div className="queue-pos">{idx + 1}</div>
+                    <div>
+                      <div style={{ fontWeight: 800 }}>
+                        {toTitleCase(row.partner.fullName || row.partner.login || row.partner.email || row.partner.id)}
+                      </div>
+                      <div className="dash-sub">
+                        ${row.amountCur.toFixed(2)} month-to-date • {row.booked} booked • {row.available} available
                       </div>
                     </div>
-
-                    <div className="btn-group">
-                      <button
-                        className="btn btn--primary btn--sm"
-                        type="button"
-                        onClick={() => setDayForPartner(p.id, rosterDayKey, STATE.BUSY)}
-                        title="Book this partner for the selected day"
-                      >
-                        Book
-                      </button>
-                    </div>
                   </div>
-                ));
-              })()}
+                  <div>
+                    <button className="btn btn--outline btn--sm" title="Set priority manually" type="button">Details</button>
+                  </div>
+                </div>
+              ))}
+              {!rotation.length && <div>No data.</div>}
             </div>
           </div>
         </div>

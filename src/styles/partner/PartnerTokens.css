@@ -1,0 +1,85 @@
+/* ==========================================================
+   PartnerTokens.css — Paleta azul + tokens e controles globais
+   Escopo: tudo dentro de .partner-mobile
+   ========================================================== */
+
+.partner-mobile, .partner-mobile * { box-sizing: border-box; }
+
+/* ---- Paleta solicitada ---- */
+.partner-mobile{
+  --first-color:  #2e94b9;  /* azul principal */
+  --second-color: #475053;  /* cinza-azulado (texto secundário) */
+  --third-color:  #acdcee;  /* azul claro / gradiente */
+  --fourth-color: #f0fbff;  /* fundo muito claro */
+
+  /* Tokens de UI */
+  --pm-accent: var(--first-color);
+  --pm-ink: #0f172a;
+  --pm-muted: #5f6a72;
+  --pm-card: #ffffff;
+  --pm-brd: rgba(46,148,185,.25);
+  --pm-shadow: 0 8px 24px rgba(0,0,0,.12);
+
+  /* BGs padrão (usados pelos layouts) */
+  --pm-bg: linear-gradient(180deg, var(--fourth-color) 0%, var(--third-color) 100%);
+  --pm-header-bg: linear-gradient(180deg, rgba(240,251,255,.85), rgba(240,251,255,.60));
+  --pm-tabbar-bg: rgba(255,255,255,.85);
+}
+
+/* ---- Background base das páginas partner ---- */
+.partner-mobile{
+  background: var(--pm-bg);
+  color: var(--pm-ink);
+}
+
+/* ==========================================================
+   Controles globais (apenas partner)
+   ========================================================== */
+
+/* Inputs base */
+.partner-mobile input[type="text"],
+.partner-mobile input[type="number"],
+.partner-mobile input[type="date"],
+.partner-mobile input[type="month"],
+.partner-mobile select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: #fff;
+  border: 1px solid var(--pm-brd);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--pm-ink);
+  box-shadow: 0 1px 2px rgba(2,6,23,.04);
+}
+.partner-mobile input:focus,
+.partner-mobile select:focus{
+  outline: none;
+  border-color: color-mix(in oklab, var(--pm-accent) 60%, white 40%);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--pm-accent) 25%, transparent);
+}
+
+/* Estilo do picker (Month / Date) */
+.partner-mobile input[type="month"]::-webkit-calendar-picker-indicator,
+.partner-mobile input[type="date"]::-webkit-calendar-picker-indicator{
+  opacity: .85;
+  cursor: pointer;
+  filter: invert(41%) sepia(19%) saturate(1014%) hue-rotate(156deg) brightness(92%) contrast(92%);
+}
+
+/* Botões base “chipados” quando necessário */
+.partner-mobile .btn{
+  border: 1px solid var(--pm-brd);
+  background: #fff;
+  color: var(--pm-ink);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.partner-mobile .btn-primary{
+  background: var(--pm-accent);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 16px color-mix(in oklab, var(--pm-accent) 30%, transparent);
+}

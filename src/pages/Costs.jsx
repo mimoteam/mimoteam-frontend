@@ -4,12 +4,12 @@ import {
   Save, Trash2, Upload, Download, Settings, Globe, MapPin, Users,
   RefreshCw, X, Edit3
 } from 'lucide-react';
-import '../styles/Services.css'; // reaproveita seu layout base
+import '../styles/pages/Costs.css';
 
 const SERVICE_TYPES = [
   'IN_PERSON_TOUR','VIRTUAL_TOUR','COORDINATOR',
   'CONCIERGE','TICKET_DELIVERY','DELIVERY','AIRPORT_ASSISTANCE','VACATION_HOME_ASSISTANCE','HOTEL_ASSISTANCE',
-  'BABYSITTER','ADJUSMENT','REIMBURSEMENT','EXTRA HOUR'
+  'BABYSITTER','ADJUSMENT','REIMBURSEMENT','EXTRA HOUR', 'ASSISTANCE'
 ];
 const TEAMS = ['US','BR'];
 const LOCATIONS = ['ORLANDO','CALIFÓRNIA'];
@@ -18,7 +18,6 @@ const PARKS = ['DISNEY WORLD','DISNEYLAND','UNIVERSAL HOLLYWOOD','UNIVERSAL STUD
 export default function Costs() {
   const { costs, loaded, addRow, updateRow, removeRow, clearAll, exportJSON, importJSON } = useCosts();
 
-  // filtros básicos para visualizar (AGORA com guestsMin/guestsMax)
   const [filters, setFilters] = useState({
     serviceType:'', team:'', location:'', park:'',
     guestsMin:'', guestsMax:''
@@ -36,7 +35,6 @@ export default function Costs() {
     if (filters.location)    out = out.filter(r => r.location === filters.location);
     if (filters.park)        out = out.filter(r => r.park === filters.park);
 
-    // Guests (faixa)
     if (filters.guestsMin !== '') {
       const gmin = Number(filters.guestsMin);
       out = out.filter(r => {
@@ -55,20 +53,20 @@ export default function Costs() {
     return out;
   }, [costs, filters]);
 
-  // >>> PAGINAÇÃO <<<
+  // paginação
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  useEffect(() => {
-    // sempre que filtros mudam, volta pra página 1
-    setPage(1);
-  }, [filters, pageSize]);
+  useEffect(() => { setPage(1); }, [filters, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const startIndex = (page - 1) * pageSize;
-  const paginated = useMemo(() => filtered.slice(startIndex, startIndex + pageSize), [filtered, startIndex, pageSize]);
+  const paginated = useMemo(
+    () => filtered.slice(startIndex, startIndex + pageSize),
+    [filtered, startIndex, pageSize]
+  );
 
-  // form de criação/edição
+  // form
   const blank = { id:null, serviceType:'', team:'', location:'', park:'', guests:'', hopper:'', hours:'', amount:'' };
   const [editing, setEditing] = useState(blank);
 
@@ -83,21 +81,19 @@ export default function Costs() {
       team: (editing.team || '').toUpperCase(),
       location: (editing.location || '').toUpperCase(),
       park: (editing.park || '').toUpperCase(),
-      guests: editing.guests ? Number(editing.guests) : '', // padroniza como número
+      guests: editing.guests ? Number(editing.guests) : '',
       hopper: editing.hopper === 'TRUE' ? 'TRUE' : (editing.hopper === 'FALSE' ? 'FALSE' : ''),
       hours: editing.hours?.toString() || '',
       amount: amt
     };
 
-    if (editing.id) {
-      updateRow(editing.id, payload);
-    } else {
-      addRow(payload);
-    }
+    if (editing.id) updateRow(editing.id, payload);
+    else addRow(payload);
+
     setEditing(blank);
   };
 
-  const startEdit = (row) => setEditing({ ...row });
+  const startEdit  = (row) => setEditing({ ...row });
   const cancelEdit = () => setEditing(blank);
 
   const doExport = () => {
@@ -112,16 +108,12 @@ export default function Costs() {
   const doImport = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      await importJSON(file);
-      e.target.value = '';
-    } catch {
-      alert('Invalid JSON file.');
-    }
+    try { await importJSON(file); e.target.value = ''; }
+    catch { alert('Invalid JSON file.'); }
   };
 
   return (
-    <div className="services-page">
+    <div className="costs-page">
       {/* Header */}
       <div className="services-header">
         <div className="header-info">
@@ -138,10 +130,7 @@ export default function Costs() {
             <input type="file" accept="application/json" onChange={doImport} style={{ display:'none' }} />
           </label>
 
-          <button
-            className="btn btn--danger"
-            onClick={() => { if (window.confirm('Clear ALL costs?')) clearAll(); }}
-          >
+          <button className="btn btn--danger" onClick={() => { if (window.confirm('Clear ALL costs?')) clearAll(); }}>
             <Trash2 size={16}/> Clear All
           </button>
         </div>
@@ -160,11 +149,7 @@ export default function Costs() {
             <div className="form-row-compact-4">
               <div className="field">
                 <label className="form-label"><Settings size={14}/> Service Type *</label>
-                <select
-                  className="form-select"
-                  value={editing.serviceType}
-                  onChange={e => setEditing(prev => ({...prev, serviceType:e.target.value}))}
-                >
+                <select className="form-select" value={editing.serviceType} onChange={e => setEditing(prev => ({...prev, serviceType:e.target.value}))}>
                   <option value="">Select</option>
                   {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
@@ -172,11 +157,7 @@ export default function Costs() {
 
               <div className="field">
                 <label className="form-label"><Globe size={14}/> Team</label>
-                <select
-                  className="form-select"
-                  value={editing.team}
-                  onChange={e => setEditing(p => ({...p, team:e.target.value}))}
-                >
+                <select className="form-select" value={editing.team} onChange={e => setEditing(p => ({...p, team:e.target.value}))}>
                   <option value="">—</option>
                   {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
@@ -184,11 +165,7 @@ export default function Costs() {
 
               <div className="field">
                 <label className="form-label"><MapPin size={14}/> Location</label>
-                <select
-                  className="form-select"
-                  value={editing.location}
-                  onChange={e => setEditing(p => ({...p, location:e.target.value}))}
-                >
+                <select className="form-select" value={editing.location} onChange={e => setEditing(p => ({...p, location:e.target.value}))}>
                   <option value="">—</option>
                   {LOCATIONS.map(l => <option key={l} value={l}>{l}</option>)}
                 </select>
@@ -196,11 +173,7 @@ export default function Costs() {
 
               <div className="field">
                 <label className="form-label"><MapPin size={14}/> Park</label>
-                <select
-                  className="form-select"
-                  value={editing.park}
-                  onChange={e => setEditing(p => ({...p, park:e.target.value}))}
-                >
+                <select className="form-select" value={editing.park} onChange={e => setEditing(p => ({...p, park:e.target.value}))}>
                   <option value="">—</option>
                   {PARKS.map(pk => <option key={pk} value={pk}>{pk}</option>)}
                 </select>
@@ -222,11 +195,7 @@ export default function Costs() {
 
               <div className="field">
                 <label className="form-label">Hopper</label>
-                <select
-                  className="form-select"
-                  value={editing.hopper}
-                  onChange={e => setEditing(p => ({...p, hopper:e.target.value}))}
-                >
+                <select className="form-select" value={editing.hopper} onChange={e => setEditing(p => ({...p, hopper:e.target.value}))}>
                   <option value="">—</option>
                   <option value="TRUE">TRUE</option>
                   <option value="FALSE">FALSE</option>
@@ -325,7 +294,6 @@ export default function Costs() {
               </select>
             </div>
 
-            {/* NOVO: filtro por Guests (min/max) */}
             <div className="filter-group">
               <label>Guests</label>
               <div style={{ display:'flex', gap:6 }}>
@@ -363,10 +331,7 @@ export default function Costs() {
         </div>
 
         <div className="services-table">
-          <div
-            className="table-header"
-            style={{ gridTemplateColumns:'1.2fr .6fr .9fr .9fr .6fr .6fr .6fr .6fr .6fr' }}
-          >
+          <div className="table-header">
             <div>Service Type</div>
             <div>Team</div>
             <div>Location</div>
@@ -380,11 +345,7 @@ export default function Costs() {
 
           <div className="table-body">
             {loaded && paginated.map(row => (
-              <div
-                key={row.id}
-                className="table-row"
-                style={{ gridTemplateColumns:'1.2fr .6fr .9fr .9fr .6fr .6fr .6fr .6fr .6fr' }}
-              >
+              <div key={row.id} className="table-row">
                 <div className="table-cell">{row.serviceType || '—'}</div>
                 <div className="table-cell">{row.team || '—'}</div>
                 <div className="table-cell">{row.location || '—'}</div>

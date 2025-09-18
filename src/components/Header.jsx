@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { LogOut, Menu, Bell, User, Search, ChevronRight } from 'lucide-react';
+// src/components/Header.jsx
+import React, { useState, useEffect, useMemo } from 'react';
+import { LogOut, Menu, Bell, User as UserIcon, Search, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import '../styles/layout/header.css';
 
 const PAGES = {
   '/dashboard': 'Dashboard Overview',
@@ -13,10 +15,8 @@ const PAGES = {
 
 function titleFromPath(path) {
   if (PAGES[path]) return PAGES[path];
-  // fallback genérico: /foo/bar -> "Foo / Bar"
   const parts = String(path || '/')
-    .split('/')
-    .filter(Boolean)
+    .split('/').filter(Boolean)
     .map(p => p.replace(/[-_]/g, ' '))
     .map(p => p.charAt(0).toUpperCase() + p.slice(1));
   return parts.length ? parts.join(' / ') : 'Mimo Team Portal';
@@ -36,6 +36,17 @@ function crumbsFromPath(path) {
   return ['Home', ...parts.map(p => p.replace(/[-_]/g, ' '))
                            .map(p => p.charAt(0).toUpperCase() + p.slice(1))];
 }
+
+// fallback leve para quando não houver foto
+const DEFAULT_AVATAR =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
+      <rect width='64' height='64' rx='12' ry='12' fill='#E2E8F0'/>
+      <circle cx='32' cy='24' r='12' fill='#94A3B8'/>
+      <path d='M10 56a22 22 0 0144 0' fill='#94A3B8'/>
+    </svg>`
+  );
 
 const Header = ({ currentPath = '/', onMenuToggle, onSearch }) => {
   const { user, logout } = useAuth();
@@ -65,6 +76,25 @@ const Header = ({ currentPath = '/', onMenuToggle, onSearch }) => {
     if (typeof onSearch === 'function') onSearch(q);
   };
 
+  // ===== avatar: pega do contexto; se faltar, tenta do localStorage; se falhar, usa DEFAULT =====
+  const avatarUrl = useMemo(() => {
+    const direct = user?.avatarUrl || user?.photoUrl || user?.photoURL;
+    if (direct) return direct;
+    try {
+      const raw = localStorage.getItem('current_user_v1');
+      const stored = raw ? JSON.parse(raw) : null;
+      if (stored?.avatarUrl) return stored.avatarUrl;
+    } catch {}
+    return DEFAULT_AVATAR;
+  }, [user]);
+
+  // handler para quedas de imagem (troca para DEFAULT)
+  const onAvatarError = (e) => {
+    if (e?.currentTarget?.src !== DEFAULT_AVATAR) {
+      e.currentTarget.src = DEFAULT_AVATAR;
+    }
+  };
+
   return (
     <header className={`app-header neumorphic ${isAdmin ? 'app-header--admin' : 'app-header--partner'}`}>
       {/* Top bar (comum) */}
@@ -76,7 +106,6 @@ const Header = ({ currentPath = '/', onMenuToggle, onSearch }) => {
 
           <div className="page-info">
             <h1 className="page-title">{pageTitle}</h1>
-            {/* Partner: mantém compacto; Admin: pode mostrar o subtítulo aqui também */}
             <p className={`page-subtitle ${isPartner ? 'page-subtitle--compact' : ''}`}>
               {fmtDate(now)} • {fmtTime(now)}
             </p>
@@ -94,10 +123,24 @@ const Header = ({ currentPath = '/', onMenuToggle, onSearch }) => {
             <span className="notification-badge">3</span>
           </button>
 
+          {/* ===== avatar + info ===== */}
           <div className="user-profile" title={user?.name || 'Profile'}>
-            <div className="user-avatar" aria-hidden><User size={18} /></div>
+            <div className="user-avatar">
+              <img
+                src={avatarUrl}
+                alt={user?.name || 'User avatar'}
+                onError={onAvatarError}
+                loading="lazy"
+                decoding="async"
+              />
+              {/* Ícone opcional de fundo (aparece atrás se a imagem não carregar) */}
+              <span className="user-avatar-fallback" aria-hidden>
+                <UserIcon size={16} />
+              </span>
+            </div>
+
             <div className="user-info">
-              <span className="user-name">{user?.name || 'Admin User'}</span>
+              <span className="user-name">{user?.name || user?.fullName || 'Admin User'}</span>
               <span className="user-role">{user?.userType || 'Administrator'}</span>
             </div>
           </div>
@@ -131,7 +174,6 @@ const Header = ({ currentPath = '/', onMenuToggle, onSearch }) => {
           </form>
 
           <div className="hdr-quick">
-            {/* Exemplos — troque por chips dinâmicos da página */}
             {currentPath === '/capacity' && (
               <>
                 <div className="chip" data-variant="outline">View: Week</div>

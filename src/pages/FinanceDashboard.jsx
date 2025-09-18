@@ -3,9 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2, Clock3, CalendarDays, DollarSign,
   Cloud, CloudDrizzle, SunMedium, Wind, Droplets,
-  Plus, Trash2
 } from "lucide-react";
-import "../styles/FinanceDashboard.css";
+import "../styles/pages/FinanceDashboard.css";
 
 const PAYMENTS_KEY = "payments_v1";
 const SERVICES_KEY = "services_store_v1";
@@ -41,7 +40,7 @@ function makeServicesMap(services) {
   (services || []).forEach(s => map.set(s.id, s));
   return map;
 }
-// partnerId -> último team visto (ordena por serviceDate/updatedAt para pegar o “mais recente”)
+// partnerId -> último team visto (ordena por serviceDate/updatedAt)
 function makePartnerIdToTeamMap(services) {
   const byPid = new Map(); // pid -> { team, at }
   (services || []).forEach(s => {
@@ -51,11 +50,10 @@ function makePartnerIdToTeamMap(services) {
     const at = s.serviceDate || s.updatedAt || s.createdAt || null;
     if (!team) return;
     const prev = byPid.get(pid);
-    if (!prev || (at && new Date(at) > new Date(prev.at || 0))) {
+    if (prev == null || (at && new Date(at) > new Date(prev.at || 0))) {
       byPid.set(pid, { team, at });
     }
   });
-  // flatten
   const out = new Map();
   byPid.forEach((v, k) => out.set(k, v.team));
   return out;
@@ -68,24 +66,20 @@ function guideNameForPayment(p, servicesMap, allServices, pidTeamIndex) {
   if (p?.partner && (p.partner.name || p.partner.fullName || p.partner.displayName)) {
     return p.partner.name || p.partner.fullName || p.partner.displayName;
   }
-
   // 2) via serviceIds -> team
   const ids = Array.isArray(p?.serviceIds) ? p.serviceIds : [];
   for (const id of ids) {
     const s = servicesMap.get(id);
     if (s?.team) return s.team;
   }
-
   // 3) serviços embutidos no próprio payment
   if (Array.isArray(p?.services) && p.services.length) {
     const s0 = p.services[0];
     if (s0?.team) return s0.team;
   }
-
   // 4) índice global partnerId -> team
   const pid = p?.partnerId || p?.partner?.id || p?.partner?._id;
   if (pid && pidTeamIndex?.get(pid)) return pidTeamIndex.get(pid);
-
   // 5) procurar no range da semana (último recurso)
   if (pid && p?.weekStart && p?.weekEnd) {
     const ws = new Date(p.weekStart);
@@ -98,7 +92,6 @@ function guideNameForPayment(p, servicesMap, allServices, pidTeamIndex) {
     });
     if (hit?.team) return hit.team;
   }
-
   return "—";
 }
 
@@ -169,9 +162,9 @@ function CalendarCard() {
       <div className="fin-head" style={{ marginBottom: 8 }}>
         <h3 className="title--dashboard">Calendar</h3>
         <div className="fin-inline">
-          <button className="btn-ghost" onClick={() => setBase(new Date(y, m - 1, 1))}>‹</button>
+          <button className="btn btn--outline btn--sm" onClick={() => setBase(new Date(y, m - 1, 1))}>‹</button>
           <span style={{ fontWeight: 800, color: "var(--ink)" }}>{monthName}</span>
-          <button className="btn-ghost" onClick={() => setBase(new Date(y, m + 1, 1))}>›</button>
+          <button className="btn btn--outline btn--sm" onClick={() => setBase(new Date(y, m + 1, 1))}>›</button>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6 }}>
@@ -232,7 +225,7 @@ function ToDoCard() {
 
       <form onSubmit={add} style={{ display:"flex", gap:8, marginBottom:10 }}>
         <input className="todo-input" placeholder="Add a task…" value={text} onChange={(e)=>setText(e.target.value)} />
-        <button type="submit" className="btn-ghost" title="Add"><Plus size={16}/></button>
+        <button type="submit" className="btn btn--outline btn--sm" title="Add">+</button>
       </form>
 
       {total === 0 ? (
@@ -244,7 +237,7 @@ function ToDoCard() {
               <div className="todo-row" key={it.id}>
                 <button className="todo-check" onClick={()=>complete(it.id)} title="Complete">✓</button>
                 <div className="todo-text">{it.text}</div>
-                <button className="todo-del" onClick={()=>remove(it.id)} title="Delete"><Trash2 size={14}/></button>
+                <button className="todo-del" onClick={()=>remove(it.id)} title="Delete">×</button>
               </div>
             ))}
           </div>
@@ -256,7 +249,7 @@ function ToDoCard() {
 
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               <label className="kpi-title" style={{ fontWeight:700 }}>Show</label>
-              <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="btn-ghost" style={{ padding: "6px 10px" }}>
+              <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} style={{ padding: "6px 10px", border:'1px solid var(--line)', borderRadius:10 }}>
                 <option value={5}>5</option>
                 <option value={10}>10</option>
               </select>
@@ -264,11 +257,11 @@ function ToDoCard() {
             </div>
 
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-              <button className="btn-ghost" onClick={() => setPage(1)} disabled={page === 1}>«</button>
-              <button className="btn-ghost" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>‹</button>
+              <button className="btn btn--outline btn--sm" onClick={() => setPage(1)} disabled={page === 1}>«</button>
+              <button className="btn btn--outline btn--sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>‹</button>
               <div className="kpi-title" style={{ fontWeight:900 }}>{page}/{totalPages}</div>
-              <button className="btn-ghost" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>›</button>
-              <button className="btn-ghost" onClick={() => setPage(totalPages)} disabled={page === totalPages}>»</button>
+              <button className="btn btn--outline btn--sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>›</button>
+              <button className="btn btn--outline btn--sm" onClick={() => setPage(totalPages)} disabled={page === totalPages}>»</button>
             </div>
           </div>
         </>
@@ -353,27 +346,29 @@ export default function FinanceDashboard({ payments: paymentsProp, services: ser
     return ids.reduce((sum, id) => sum + Number(servicesMap.get(id)?.finalValue || 0), 0);
   };
 
+  const safePayments = Array.isArray(payments) ? payments : [];
+
   const toBePaidRows = useMemo(
-    () => payments.filter((p) => (p.status || "").toUpperCase() === "APPROVED"),
-    [payments]
+    () => safePayments.filter((p) => (p.status || "").toUpperCase() === "APPROVED"),
+    [safePayments]
   );
   const awaitingRows = useMemo(
-    () => payments.filter((p) => {
+    () => safePayments.filter((p) => {
       const s = (p.status || "").toUpperCase();
       return s === "SHARED" || s === "AWAITING";
     }),
-    [payments]
+    [safePayments]
   );
 
   const monthlyCost = useMemo(() => {
     let total = 0;
-    payments.forEach((p) => {
+    safePayments.forEach((p) => {
       const anchor = p.weekStart || p.createdAt || p.paidAt;
       if (!sameYYYYMM(anchor, month)) return;
       total += sumServices(p);
     });
     return total;
-  }, [payments, servicesMap, month]);
+  }, [safePayments, servicesMap, month]);
 
   const toBePaidSorted = useMemo(
     () => [...toBePaidRows].sort((a, b) => sumServices(b) - sumServices(a)),
@@ -400,7 +395,7 @@ export default function FinanceDashboard({ payments: paymentsProp, services: ser
         <Kpi icon={<DollarSign size={18} />} title="Monthly Costs" value={money(monthlyCost)} />
         <Kpi icon={<CheckCircle2 size={18} />} title="To be Paid" value={toBePaidRows.length} />
         <Kpi icon={<Clock3 size={18} />} title="Awaiting Approval" value={awaitingRows.length} />
-        <Kpi icon={<CalendarDays size={18} />} title="Month Services" value={payments.length} />
+        <Kpi icon={<CalendarDays size={18} />} title="Month Services" value={safePayments.length} />
       </section>
 
       {/* Clock + Weather */}
@@ -453,66 +448,78 @@ function Kpi({ icon, title, value }) {
   );
 }
 
-function PaginatedListCard({ title, titleClass, rows, getLeft, getRight, defaultPageSize=5 }) {
+/* Card reutilizável com paginação — corrigido */
+function PaginatedListCard({ title, titleClass, rows = [], getLeft, getRight, defaultPageSize = 5 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
 
   const total = rows.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
-  useEffect(() => { setPage(1); }, [pageSize, title]);
+
+  useEffect(() => { setPage(1); }, [pageSize, title, total]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   const startIndex = (page - 1) * pageSize;
   const slice = rows.slice(startIndex, startIndex + pageSize);
 
   return (
     <div className="fin-card">
-      <div className="fin-head">
-        <h3 className={titleClass}>{title}</h3>
+      {/* Cabeçalho do card */}
+      <div className="fin-head" style={{ marginBottom: 8 }}>
+        <h3 className={titleClass || ''}>{title}</h3>
+        <div className="fin-inline">
+          <span>{total} items</span>
+        </div>
       </div>
 
-      <div className="table">
-        <div className="thead">
-          <div className="th">Partner</div>
-          <div className="th right">Total</div>
-        </div>
-        {slice.length === 0 ? (
-          <div className="tr">
-            <div className="td">No data</div>
-            <div className="td right">—</div>
-          </div>
-        ) : (
-          slice.map((r) => (
-            <div className="tr" key={r.id}>
-              <div className="td">{getLeft(r)}</div>
-              <div className="td right">{getRight(r)}</div>
+      {/* Lista */}
+      {total === 0 ? (
+        <div className="fin-empty">No items.</div>
+      ) : (
+        <>
+          <div className="table">
+            <div className="thead">
+              <div className="th">Partner / Team</div>
+              <div className="th right">Total</div>
             </div>
-          ))
-        )}
-      </div>
 
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginTop:10 }}>
-        <div className="kpi-title" style={{ fontWeight: 700 }}>
-          Showing {total === 0 ? 0 : startIndex + 1}–{Math.min(startIndex + pageSize, total)} of {total}
-        </div>
+            {slice.map((row, i) => (
+              <div className="tr" key={row?.id ?? `row_${i}`}>
+                <div className="td">{typeof getLeft === 'function' ? getLeft(row) : '—'}</div>
+                <div className="td right">{typeof getRight === 'function' ? getRight(row) : '—'}</div>
+              </div>
+            ))}
+          </div>
 
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <label className="kpi-title" style={{ fontWeight:700 }}>Show</label>
-          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="btn-ghost" style={{ padding: "6px 10px" }}>
-            <option value={5}>5</option>
-            <option value={10}>10</option>
-          </select>
-          <span className="kpi-title" style={{ fontWeight:700 }}>per page</span>
-        </div>
+          {/* Footer: paginação e page size */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10 }}>
+            <div className="kpi-title" style={{ fontWeight: 700 }}>
+              Showing {total === 0 ? 0 : startIndex + 1}–{Math.min(startIndex + pageSize, total)} of {total}
+            </div>
 
-        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-          <button className="btn-ghost" onClick={() => setPage(1)} disabled={page === 1}>«</button>
-          <button className="btn-ghost" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>‹</button>
-          <div className="kpi-title" style={{ fontWeight:900 }}>{page}/{totalPages}</div>
-          <button className="btn-ghost" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>›</button>
-          <button className="btn-ghost" onClick={() => setPage(totalPages)} disabled={page === totalPages}>»</button>
-        </div>
-      </div>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <label className="kpi-title" style={{ fontWeight:700 }}>Show</label>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                style={{ padding: "6px 10px", border:'1px solid var(--line)', borderRadius:10 }}
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+              </select>
+              <span className="kpi-title" style={{ fontWeight:700 }}>per page</span>
+            </div>
+
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <button className="btn btn--outline btn--sm" onClick={() => setPage(1)} disabled={page === 1}>«</button>
+              <button className="btn btn--outline btn--sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>‹</button>
+              <div className="kpi-title" style={{ fontWeight:900 }}>{page}/{totalPages}</div>
+              <button className="btn btn--outline btn--sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>›</button>
+              <button className="btn btn--outline btn--sm" onClick={() => setPage(totalPages)} disabled={page === totalPages}>»</button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

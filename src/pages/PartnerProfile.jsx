@@ -1,6 +1,6 @@
-// src/pages/PartnerProfile.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import "../styles/PartnerProfile.css";
+import "../styles/pages/PartnerProfile.css";
+
 import { toAbsoluteUrl } from "../api/http";
 import { getCurrentUser, saveStoredUser } from "../api/auth";
 import { updateUser, uploadAvatar, deleteAvatar, getMe, getUserById } from "../api/users";
@@ -27,16 +27,17 @@ function initialsFrom(name) {
   return parts.map((p) => p[0]?.toUpperCase()).join("");
 }
 function absolutize(u) {
-  return toAbsoluteUrl(u || "");
+  const abs = toAbsoluteUrl?.(u || "");
+  return abs || "";
 }
 
-/** ---------- Conversões de data (sem usar Date/UTC) ---------- */
-/** Aceita ISO, YYYY-MM-DD ou MM/DD/YYYY e retorna YYYY-MM-DD */
+/** ---------- Datas (string-only, sem UTC) ---------- */
+/** aceita ISO, YYYY-MM-DD ou MM/DD/YYYY e retorna YYYY-MM-DD */
 function parseAnyToYMD(v) {
   if (!v) return "";
   const s = String(v).trim();
 
-  // Pega os 10 primeiros se for ISO-like (YYYY-MM-DD...)
+  // ISO-like: pega os 10 primeiros caracteres
   const mIso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (mIso) return `${mIso[1]}-${mIso[2]}-${mIso[3]}`;
 
@@ -58,7 +59,7 @@ function parseAnyToYMD(v) {
     if (asMDY) return `${asMDY[3]}-${asMDY[1]}-${asMDY[2]}`;
   }
 
-  // Já está em YYYY-MM-DD
+  // já está Y-M-D
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
   return "";
@@ -92,7 +93,7 @@ function maskMDY(input) {
   return `${mm}/${dd}/${yy}`;
 }
 
-/** valida MM/DD/YYYY com checagem de calendário */
+/** valida MM/DD/YYYY (com checagem de calendário) */
 function isValidMDY(mdy) {
   const m = String(mdy || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return false;
@@ -104,7 +105,7 @@ function isValidMDY(mdy) {
 
 /* ================ Componente ================= */
 export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) {
-  const [loading, setLoading] = useState(true); // só na carga inicial
+  const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const userId = user?._id || user?.id || propUser?._id || propUser?.id || "";
 
@@ -113,25 +114,21 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // datas (em MM/DD/YYYY na UI)
+  // datas (MM/DD/YYYY)
   const [dob, setDob] = useState("");
   const [hire, setHire] = useState("");
   const [initialDob, setInitialDob] = useState("");
   const [initialHire, setInitialHire] = useState("");
 
-  const [savingDob, setSavingDob] = useState(false);
-  const [savingHire, setSavingHire] = useState(false);
-
-  // impede que handlers globais roubem foco (sem preventDefault)
   const stopBubble = (e) => e.stopPropagation();
 
-  // ======== Carrega usuário + fallback para datas faltantes ========
+  // ======== Boot de dados ========
   useEffect(() => {
     let alive = true;
 
     async function boot() {
       try {
-        // 1) base: propUser -> /auth/me -> localStorage
+        // base: propUser -> /auth/me -> localStorage
         let base = propUser || (await getCurrentUser().catch(() => null));
         if (!base) {
           try { base = JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || "null"); } catch {}
@@ -146,7 +143,7 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
         setUser(normalized || {});
         setAvatarUrl(normalized?.avatarUrl || "");
 
-        // Deriva datas da primeira resposta (preferindo virtuais *YMD)
+        // derivar datas
         let ymdDOB =
           normalized?.birthdayYMD ||
           parseAnyToYMD(normalized?.birthday || normalized?.dob || "");
@@ -158,12 +155,13 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
             normalized?.hireDate || normalized?.startDate || normalized?.companyStartDate || ""
           );
 
-        // 2) Fallback: se ainda estiverem vazias, buscar o doc completo
+        // fetch completo se faltar algo
         if ((!ymdDOB || !ymdHIRE) && (normalized?._id || normalized?.id)) {
           try {
-            const fresh = (await getMe().catch(() => null)) || (await getUserById(normalized._id || normalized.id).catch(() => null));
+            const fresh =
+              (await getMe().catch(() => null)) ||
+              (await getUserById(normalized._id || normalized.id).catch(() => null));
             if (fresh) {
-              // merge não destrutivo
               const merged = { ...normalized, ...fresh };
               if (alive) setUser(merged);
 
@@ -178,17 +176,15 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
                   merged?.hireDate || merged?.startDate || merged?.companyStartDate || ymdHIRE || ""
                 );
             }
-          } catch { /* silencioso */ }
+          } catch { /* noop */ }
         }
 
         const mdyDob = ymdToMDY(ymdDOB) || "";
         const mdyHire = ymdToMDY(ymdHIRE) || "";
 
         if (!alive) return;
-        setDob(mdyDob);
-        setHire(mdyHire);
-        setInitialDob(mdyDob);
-        setInitialHire(mdyHire);
+        setDob(mdyDob); setHire(mdyHire);
+        setInitialDob(mdyDob); setInitialHire(mdyHire);
       } finally {
         if (alive) setLoading(false);
       }
@@ -199,7 +195,7 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // auto-clear mensagens
+  // auto-clear mensagem
   useEffect(() => {
     if (!msg) return;
     const t = setTimeout(() => setMsg(""), 3500);
@@ -271,18 +267,17 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
     }
   }
 
-  // salvar DOB (envia YYYY-MM-DD string pura; sem UTC)
+  // salvar DOB
   async function onSaveDob() {
     if (!userId) return;
     const mdy = dob.trim();
     if (!isValidMDY(mdy)) { setMsg("Use MM/DD/YYYY for DOB."); return; }
-    const ymd = mdyToYMD(mdy);
     if (dob === initialDob) { setMsg("No changes to save."); return; }
 
-    setSavingDob(true); setMsg("");
+    const ymd = mdyToYMD(mdy);
+    setMsg("");
     try {
       const updated = await updateUser(userId, {
-        // backend normaliza dob → birthday e aceita *_YMD (virtuais)
         birthday: ymd, dob: ymd, birthdayYMD: ymd, dobYMD: ymd,
       });
 
@@ -300,20 +295,18 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
       patchStoredUser({ birthday: ymd, birthdayYMD: ymd, dob: ymd, dobYMD: ymd });
       setInitialDob(mdy);
       setMsg("Saved locally (offline).");
-    } finally {
-      setSavingDob(false);
     }
   }
 
-  // salvar Company Start (YYYY-MM-DD string pura)
+  // salvar Company Start
   async function onSaveHire() {
     if (!userId) return;
     const mdy = hire.trim();
     if (!isValidMDY(mdy)) { setMsg("Use MM/DD/YYYY for Company Start."); return; }
-    const ymd = mdyToYMD(mdy);
     if (hire === initialHire) { setMsg("No changes to save."); return; }
 
-    setSavingHire(true); setMsg("");
+    const ymd = mdyToYMD(mdy);
+    setMsg("");
     try {
       const updated = await updateUser(userId, {
         hireDate: ymd, startDate: ymd, companyStartDate: ymd,
@@ -331,7 +324,6 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
 
       setHire(newMDY);
       setInitialHire(newMDY);
-
       setUser((u) => ({
         ...(u || {}),
         ...(updated || {}),
@@ -342,7 +334,6 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
         startDateYMD: newYMD,
         companyStartDateYMD: newYMD,
       }));
-
       patchStoredUser({
         hireDate: newYMD, startDate: newYMD, companyStartDate: newYMD,
         hireDateYMD: newYMD, startDateYMD: newYMD, companyStartDateYMD: newYMD,
@@ -354,25 +345,23 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
       patchStoredUser({ hireDate: ymd, startDate: ymd, companyStartDate: ymd });
       setInitialHire(mdy);
       setMsg("Saved locally (offline).");
-    } finally {
-      setSavingHire(false);
     }
   }
 
-  const name = toTitle(user?.fullName || propUser?.fullName || "");
+  const name  = toTitle(user?.fullName || propUser?.fullName || "");
   const email = user?.email || propUser?.email || "";
-  const role = toTitle(user?.role || propUser?.role || "");
-  const dept = toTitle(user?.department || propUser?.department || "");
+  const role  = toTitle(user?.role || propUser?.role || "");
+  const dept  = toTitle(user?.department || propUser?.department || "");
   const initials = useMemo(() => initialsFrom(name), [name]);
-  const showRemove = Boolean(avatarUrl);
 
-  const dobDirty = dob !== initialDob;
-  const hireDirty = hire !== initialHire;
+  const showRemove = Boolean(avatarUrl);
+  const dobDirty   = dob   !== initialDob;
+  const hireDirty  = hire  !== initialHire;
 
   return (
-    <div className="page-profile">
+    <div className="partner-page" /* mobile-first & escopado */>
       <div
-        className="p-card profile-card"
+        className="profile-card"
         onMouseDownCapture={stopBubble}
         onTouchStartCapture={stopBubble}
       >
@@ -392,6 +381,7 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
               <div className="profile-avatar-fallback" aria-hidden>{initials}</div>
             )}
           </div>
+
           <div className="profile-avatar-actions">
             <label className="btn btn--outline btn--sm profile-upload">
               {uploading ? "Working…" : "Change Avatar"}
@@ -402,6 +392,7 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
                 disabled={uploading}
               />
             </label>
+
             {showRemove && (
               <button
                 type="button"
@@ -412,6 +403,7 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
                 Remove
               </button>
             )}
+
             {msg && (
               <span className="profile-hint" role="status" aria-live="polite" style={{ marginLeft: 8 }}>
                 {msg}
@@ -426,20 +418,23 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
             <div className="pc-label">Name</div>
             <div className="pc-value">{name || "—"}</div>
           </div>
+
           <div className="profile-row">
             <div className="pc-label">Email</div>
             <div className="pc-value">{email || "—"}</div>
           </div>
+
           <div className="profile-row">
             <div className="pc-label">Role</div>
             <div className="pc-value">{role || "—"}</div>
           </div>
+
           <div className="profile-row">
             <div className="pc-label">Department</div>
             <div className="pc-value">{dept || "—"}</div>
           </div>
 
-          {/* DOB (MM/DD/YYYY) */}
+          {/* DOB */}
           <div className="profile-row">
             <div className="pc-label">DOB</div>
             <div className="pc-value">
@@ -451,24 +446,24 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
                   className="profile-input"
                   value={dob}
                   onChange={(e) => setDob(maskMDY(e.target.value))}
-                  onKeyDown={(e) => { if (e.key === "Enter" && dobDirty && !savingDob && !loading) onSaveDob(); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && dobDirty && !uploading && !loading) onSaveDob(); }}
                   maxLength={10}
                   autoComplete="bday"
                 />
                 <button
                   className="btn btn--primary btn--sm"
                   onClick={onSaveDob}
-                  disabled={savingDob || loading || !dobDirty}
+                  disabled={uploading || loading || !dobDirty}
                   title={dobDirty ? "Save DOB" : "No changes"}
                 >
-                  {savingDob ? "Saving…" : "Save"}
+                  {uploading ? "Saving…" : "Save"}
                 </button>
                 <span className="profile-hint">Current: {dob || "—"}</span>
               </div>
             </div>
           </div>
 
-          {/* Company Start (MM/DD/YYYY) */}
+          {/* Company Start */}
           <div className="profile-row">
             <div className="pc-label">Company Start Date</div>
             <div className="pc-value">
@@ -480,17 +475,17 @@ export default function PartnerProfile({ currentUser: propUser, onUserUpdate }) 
                   className="profile-input"
                   value={hire}
                   onChange={(e) => setHire(maskMDY(e.target.value))}
-                  onKeyDown={(e) => { if (e.key === "Enter" && hireDirty && !savingHire && !loading) onSaveHire(); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && hireDirty && !uploading && !loading) onSaveHire(); }}
                   maxLength={10}
                   autoComplete="off"
                 />
                 <button
                   className="btn btn--primary btn--sm"
                   onClick={onSaveHire}
-                  disabled={savingHire || loading || !hireDirty}
+                  disabled={uploading || loading || !hireDirty}
                   title={hireDirty ? "Save Company Start Date" : "No changes"}
                 >
-                  {savingHire ? "Saving…" : "Save"}
+                  {uploading ? "Saving…" : "Save"}
                 </button>
                 <span className="profile-hint">Current: {hire || "—"}</span>
               </div>

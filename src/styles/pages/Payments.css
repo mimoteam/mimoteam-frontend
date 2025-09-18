@@ -40,38 +40,43 @@
   padding: 12px;
 }
 
-/* === filtros (desktop numa linha) ======================================= */
+/* Base (mobile/tablet pode quebrar) */
 .filters-row {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  flex-wrap: wrap;           /* mobile/tablet podem quebrar */
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .filters-row .filter { min-width: 0; }
+
+/* Desktop: 1 linha fixa em grid (5 colunas) */
 @media (min-width: 1024px) {
-  .filters-row { flex-wrap: nowrap; }
-  /* partner | date from | date to | search */
-  .filters-row .filter:nth-child(1) { width: 200px; flex: 0 0 200px; }
-  .filters-row .filter:nth-child(2) { width: 160px; flex: 0 0 160px; }
-  .filters-row .filter:nth-child(3) { width: 160px; flex: 0 0 160px; }
-  .filters-row .filter:nth-child(4) { flex: 1 1 320px; max-width: 520px; }
+  .filters-row {
+    display: grid;
+    /* Partner | Date from | Date to | Search | Ações */
+    grid-template-columns: 220px 150px 150px minmax(280px, 1fr) auto;
+    column-gap: 12px;
+    align-items: end;
+  }
 }
-/* evita o input crescer demais e força elipse do texto */
-.filters-row .filter:last-child input {
+
+/* Grupo de ações (Refresh/Clear) alinhado à direita */
+.filters-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  justify-self: end;   /* cola na direita no grid */
+  align-self: end;     /* alinha pela base dos campos */
+  white-space: nowrap; /* evita quebra entre os botões */
+}
+
+/* Campo de busca com ellipsis (independente da posição) */
+.filter--search input {
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
 }
-
-/* linha das ações (total/semana/botões) */
-.actions-row {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(280px, 0.9fr) auto auto;
-  gap: 10px;
-  align-items: center;
-}
-/* garante que o botão principal fique colado à direita da faixa de ações */
-.actions-row .btn--primary { justify-self: end; }
 
 .filter label {
   display: block;
@@ -88,30 +93,17 @@
   background: #fff;
   box-shadow: 0 2px 10px rgba(17,24,39,0.03) inset;
 }
+/* permite que o input "date" encolha no grid sem forçar quebra */
+.filter input[type="date"] { min-width: 0; }
 
-.total-pill {
-  display: inline-flex;
+/* ====== AÇÕES ABAIXO DOS FILTROS ======================================= */
+.actions-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(280px, 0.9fr) auto auto;
+  gap: 10px;
   align-items: center;
-  gap: 8px;
-  background: #eef2ff;
-  color: #1e3a8a;
-  padding: 8px 12px;
-  border-radius: 999px;
-  font-weight: 700;
-  border: 1px solid #c7d2fe;
 }
-
-.assign-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.assign-wrap select {
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  border-radius: 10px;
-  padding: 8px 10px;
-}
+.actions-row .btn--primary { justify-self: end; }
 
 /* ====== BUTTONS ========================================================= */
 .btn {
@@ -127,22 +119,12 @@
 }
 .btn--sm { height: 30px; padding: 6px 8px; }
 .btn--primary {
-  background: #111827;
-  color: #fff;
-  border-color: #111827;
+  background: #111827; color: #fff; border-color: #111827;
   box-shadow: 0 8px 22px rgba(17,24,39,0.18);
 }
 .btn--primary:disabled { opacity: .6; cursor: not-allowed; }
-.btn--outline {
-  background: #fff;
-  border-color: #e5e7eb;
-  color: #111827;
-}
-.btn--danger {
-  background: #fff;
-  border-color: #fecaca;
-  color: #b91c1c;
-}
+.btn--outline { background: #fff; border-color: #e5e7eb; color: #111827; }
+.btn--danger { background: #fff; border-color: #fecaca; color: #b91c1c; }
 
 /* ====== CARDS =========================================================== */
 .selection-card,
@@ -161,12 +143,28 @@
   margin-bottom: 10px;
 }
 
+.total-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #eef2ff;
+  color: #1e3a8a;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  border: 1px solid #c7d2fe;
+}
+.assign-wrap { display: inline-flex; align-items: center; gap: 8px; }
+.assign-wrap select {
+  border: 1px solid #e5e7eb; background: #fff; border-radius: 10px; padding: 8px 10px;
+}
+
 /* ====== TABLES (BASE) =================================================== */
 .table {
   width: 100%;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  overflow: hidden; /* mantém a borda arredondada */
+  overflow: hidden;
   background: #fff;
 }
 .table .thead {
@@ -184,7 +182,7 @@
   box-sizing: border-box;
   line-height: 1.25;
   min-width: 0;
-  display: flex;               /* títulos alinhados com o conteúdo */
+  display: flex;
   align-items: center;
   justify-content: flex-start;
 }
@@ -192,19 +190,19 @@
 .th.center, .td.center { justify-content: center; text-align: center; }
 .th.right,  .td.right  { justify-content: flex-end; text-align: right; }
 
-/* ====== TABLE: Selection =============================================== */
+/* ====== TABLE: Selection (10 colunas) ================================== */
 .table.table--selection {
   --cols:
-    46px
-    120px
-    minmax(140px, 200px)
-    1fr
-    minmax(120px, 180px)
-    minmax(90px, 110px)
-    minmax(120px, 220px)
-    minmax(120px, 140px)
-    minmax(120px, 140px)
-    minmax(170px, 220px);
+    46px                      /* checkbox */
+    120px                     /* date */
+    minmax(140px,200px)       /* client */
+    minmax(160px,220px)       /* service */
+    minmax(100px,160px)       /* park */
+    minmax(80px,100px)        /* guests */
+    minmax(160px,2fr)         /* observation (maior) */
+    minmax(110px,130px)       /* amount */
+    minmax(120px,160px)       /* pay status */
+    minmax(160px,220px);      /* assigned week */
 }
 .table.table--selection .thead,
 .table.table--selection .tbody .tr {
@@ -215,19 +213,18 @@
 }
 
 /* ====== TABLE: Generated Payments ====================================== */
-.table.table--payments{
+.table.table--payments {
   --gap: 10px;
   --col-toggle: 52px;
-  /* Mais peso para week/partner; actions só o necessário */
   --col-week:    minmax(240px, 1.4fr);
   --col-partner: minmax(200px, 1fr);
   --col-count:   minmax(80px, 0.5fr);
   --col-total:   minmax(110px, 0.6fr);
   --col-status:  minmax(110px, 0.7fr);
-  --col-actions: minmax(180px, max-content); /* <-- encolhe para caber botões */
+  --col-actions: minmax(180px, max-content);
 }
 .table.table--payments .thead,
-.table.table--payments .tbody .tr{
+.table.table--payments .tbody .tr {
   display: grid;
   grid-template-columns:
     var(--col-toggle)
@@ -240,22 +237,9 @@
   column-gap: var(--gap);
   align-items: center;
 }
-/* barra de ações sempre bem distribuída */
-.action-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-/* breakdown ocupa a linha toda */
-.table.table--payments .tbody .tr .payment-breakdown{
-  grid-column: 1 / -1;
-  margin-top: 8px;
-  background:#fafafa;
-  border:1px solid #e5e7eb;
-  border-radius:10px;
-  padding:12px;
+.action-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.table.table--payments .tbody .tr .payment-breakdown {
+  grid-column: 1 / -1; margin-top: 8px; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px;
 }
 
 /* ====== TABLE: Breakdown =============================================== */
@@ -276,21 +260,13 @@
   align-items: center !important;
 }
 .table.table--breakdown .thead {
-  background: #f9fafb;
-  border-bottom: 1px dashed #e5e7eb;
-  font-weight: 700;
-  color: #374151;
-  padding-bottom: 6px;
+  background: #f9fafb; border-bottom: 1px dashed #e5e7eb; font-weight: 700; color: #374151; padding-bottom: 6px;
 }
 .table.table--breakdown .thead .th {
-  display: block !important;
-  white-space: nowrap !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0 !important;
+  display: block !important; white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; min-width: 0 !important;
 }
-.table.table--breakdown .th { font-size:12px; color:#475569; }
-.table.table--breakdown .td { font-size:13px; }
+.table.table--breakdown .th { font-size: 12px; color: #475569; }
+.table.table--breakdown .td { font-size: 13px; }
 .table.table--breakdown .td.center { text-align: center; }
 .table.table--breakdown .td.right  { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -316,114 +292,52 @@
 }
 
 /* ====== EMPTY STATE ===================================================== */
-.empty-row {
-  padding: 18px;
-  text-align: center;
-  color: #6b7280;
-}
+.empty-row { padding: 18px; text-align: center; color: #6b7280; }
 
 /* ====== EDITOR (notas) ================================================== */
 .edit-panel {
-  margin-top: 14px;
-  border: 1px dashed #d1d5db;
-  border-radius: 12px;
-  padding: 12px;
-  background: #f9fafb;
+  margin-top: 14px; border: 1px dashed #d1d5db; border-radius: 12px; padding: 12px; background: #f9fafb;
 }
 .edit-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #374151;
-  font-weight: 700;
-  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px; color: #374151; font-weight: 700; margin-bottom: 8px;
 }
 .edit-panel textarea {
-  width: 100%;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 10px;
-  min-height: 100px;
-  background: #fff;
+  width: 100%; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; min-height: 100px; background: #fff;
 }
-.edit-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
+.edit-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 
 /* ====== PAGINATION ====================================================== */
 .pagination {
-  display: flex; 
-  align-items: center; 
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px;
 }
 .pagination-info { color: #6b7280; font-size: 13px; }
 .pagination-controls { display: flex; align-items: center; gap: 8px; }
 .pg-btn, .pg-num {
-  border: 1px solid #e5e7eb; 
-  background: #fff; 
-  border-radius: 8px;
-  padding: 8px 10px; 
-  cursor: pointer;
-  height: 34px;
+  border: 1px solid #e5e7eb; background: #fff; border-radius: 8px; padding: 8px 10px; cursor: pointer; height: 34px;
 }
 .pg-pages { display: flex; gap: 6px; }
 .pg-num.active { background: #111827; color: #fff; border-color: #111827; }
 
 /* ====== BREAKDOWN CONTAINER ============================================ */
 .payment-breakdown {
-  margin-top: 8px;
-  border: 1px solid #E2E8F0;
-  border-radius: 12px;
-  background: #fff;
-  padding: 12px;
-  max-height: 360px;
-  overflow: auto;
+  margin-top: 8px; border: 1px solid #E2E8F0; border-radius: 12px; background: #fff; padding: 12px; max-height: 360px; overflow: auto;
 }
-.payment-breakdown .receipt-title {
-  font-weight: 700; 
-  color: #374151; 
-  margin: 2px 0 8px;
-}
+.payment-breakdown .receipt-title { font-weight: 700; color: #374151; margin: 2px 0 8px; }
 .payment-breakdown .notes { margin-top: 10px; }
-.payment-breakdown .notes label {
-  font-size: 12px; color: #6b7280; margin-bottom: 6px; display: block;
-}
+.payment-breakdown .notes label { font-size: 12px; color: #6b7280; margin-bottom: 6px; display: block; }
 .payment-breakdown .notes textarea {
-  width: 100%;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 10px;
-  min-height: 70px;
-  background: #fff;
+  width: 100%; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; min-height: 70px; background: #fff;
 }
 
 /* ====== INPUT AMOUNT (Edit lines) ====================================== */
 .amount-input {
-  width: 120px;
-  height: 32px;
-  padding: 6px 8px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  text-align: right;
-  background: #fff;
+  width: 120px; height: 32px; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px; text-align: right; background: #fff;
   font-variant-numeric: tabular-nums;
 }
 
 /* ====== MISC ============================================================ */
-.icon-btn {
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  border-radius: 10px;
-  padding: 8px;
-  cursor: pointer;
-}
+.icon-btn { border: 1px solid #e5e7eb; background: #fff; border-radius: 10px; padding: 8px; cursor: pointer; }
 .icon-btn.danger { border-color: #fecaca; color: #b91c1c; }
-
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -449,7 +363,7 @@
 /* ====== RESPONSIVO ====================================================== */
 @media (max-width: 1100px) {
   .actions-row { grid-template-columns: 1fr minmax(220px, 0.9fr) auto auto; }
-  .table.table--payments{
+  .table.table--payments {
     --col-week:    minmax(220px, 1.2fr);
     --col-partner: minmax(180px, 1fr);
     --col-actions: minmax(200px, max-content);
@@ -471,36 +385,15 @@
 
 /* foco visível */
 .btn:focus-visible {
-  outline: 2px solid #90D5FF;
-  outline-offset: 2px;
-  transition: outline-color .2s ease;
+  outline: 2px solid #90D5FF; outline-offset: 2px; transition: outline-color .2s ease;
 }
 
 /* === Observation flex/grid e texto adaptável =========================== */
 .table.table--selection .td--obs {
-  align-items: flex-start;     /* alinha pelo topo p/ múltiplas linhas */
-  white-space: normal;         /* permite quebra de linha */
-  overflow: visible;           /* não corta conteúdo */
+  align-items: flex-start;      /* topo para múltiplas linhas */
+  white-space: normal;          /* permite quebra de linha */
+  overflow: visible;            /* não corta conteúdo */
 }
 .obs-grid {
-  display: flex;
-  flex-wrap: wrap;             /* o texto se adapta ao espaço */
-  gap: 4px 6px;
-  min-width: 0;
-}
-
-/* Dá mais espaço para Observation e mantém tudo na mesma linha
-   (corrigido 21fr -> 2fr) */
-.table.table--selection{
-  --cols:
-    46px                       /* checkbox */
-    120px                      /* date */
-    minmax(140px, 200px)       /* client */
-    minmax(160px, 220px)       /* service */
-    minmax(100px, 160px)       /* park */
-    minmax(80px, 100px)        /* guests */
-    minmax(160px, 2fr)         /* observation (maior) */
-    minmax(110px, 130px)       /* amount */
-    minmax(120px, 160px)       /* pay status */
-    minmax(160px, 220px);      /* assigned week */
+  display: flex; flex-wrap: wrap; gap: 4px 6px; min-width: 0;
 }

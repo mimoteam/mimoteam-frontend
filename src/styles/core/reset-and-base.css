@@ -1,0 +1,13 @@
+/* RESET & BASE */
+* { margin:0; padding:0; box-sizing:border-box; }
+html { height:100%; }
+body {
+  min-height:100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height:1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+#root { width:100%; min-height:100vh; }

@@ -1,0 +1,182 @@
+/* =========================================================
+   Client Operations (escopo em .finance-ops) — FIX BREAKDOWN
+   ========================================================= */
+.finance-ops{
+  /* mapa de colunas reutilizado no breakdown (8 colunas) */
+  --break-cols:
+    minmax(0,1fr)   /* Client */
+    minmax(0,.8fr)  /* Date   */
+    minmax(0,1fr)   /* Service*/
+    minmax(0,.8fr)  /* Guide  */
+    minmax(0,.6fr)  /* Hrs    */
+    minmax(0,.6fr)  /* Rate   */
+    minmax(0,.6fr)  /* Disc.  */
+    minmax(0,.6fr); /* Total  */
+
+  display:grid;
+  gap:14px;
+  padding-bottom:8px;
+  color: var(--ink, #1E293B);
+  background:
+    radial-gradient(1200px 400px at -10% -40%, rgba(144,213,255,.18), transparent 60%),
+    radial-gradient(1000px 380px at 110% -30%, rgba(45,139,239,.10), transparent 60%),
+    linear-gradient(180deg,#FAFBFF 0%, var(--bg, #F5F6FA) 100%);
+}
+
+.finance-ops .fin-section{ display:grid; gap:10px; }
+.finance-ops .fin-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.finance-ops .fin-head h3{
+  margin:0; font-size:1.125rem; font-weight:900; letter-spacing:.2px;
+  background: linear-gradient(90deg, var(--brand-700,#1E6ECB), var(--brand-400,#90D5FF));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.finance-ops .muted{ color: var(--muted,#64748B); font-weight:700; }
+
+.finance-ops .fin-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.finance-ops .fin-inline{ display:inline-flex; align-items:center; gap:10px; color:var(--muted,#64748B); }
+.finance-ops .fin-inline input[type="month"],
+.finance-ops .fin-inline select{
+  appearance:none; border:1px solid var(--line,#E2E8F0); background:#fff; color:var(--ink,#1E293B);
+  border-radius:12px; padding:8px 10px; font:inherit;
+  transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.finance-ops .fin-inline :is(input[type="month"],select):focus{
+  outline:none; border-color:var(--brand-500,#5BA7F7); box-shadow:0 0 0 3px rgba(144,213,255,.45);
+  transform: translateY(-1px);
+}
+
+/* Card base */
+.finance-ops .fin-card{
+  position:relative; overflow:hidden;
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.92));
+  border:1px solid var(--line,#E2E8F0);
+  border-radius:20px;
+  padding:14px;
+  box-shadow:0 10px 24px rgba(15,23,42,.08);
+}
+.finance-ops .fin-empty{ padding:14px; color:var(--muted,#64748B); }
+
+/* Tabela base */
+.finance-ops .table{ display:grid; gap:8px; }
+.finance-ops .table .thead{
+  display:grid; grid-template-columns: 1.2fr 1.2fr .6fr .6fr .6fr .6fr .8fr;
+  align-items:center;
+  font-weight:700; color:var(--muted,#64748B);
+  border-bottom:1px dashed var(--line,#E2E8F0); padding-bottom:6px;
+}
+.finance-ops .table .th{ padding:4px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.finance-ops .table .th.right{text-align:right;}
+.finance-ops .table .th.center{text-align:center;}
+.finance-ops .table .tr{
+  display:grid; grid-template-columns: 1.2fr 1.2fr .6fr .6fr .6fr .6fr .8fr;
+  align-items:center;
+  background:#fff;
+  border:1px solid var(--line,#E2E8F0);
+  border-radius:14px; padding:10px 12px;
+  box-shadow: 0 2px 8px rgba(2,8,23,.04);
+}
+.finance-ops .td{ padding:4px 6px; color: var(--ink,#1E293B); min-width:0; }
+.finance-ops .td.right{text-align:right;}
+.finance-ops .td.center{text-align:center;}
+
+/* Weekly Costs (3 colunas + CTA) */
+.finance-ops .table.table--summary{ gap:12px; }
+.finance-ops .table.table--summary .thead,
+.finance-ops .table.table--summary .tr{
+  grid-template-columns: minmax(520px,1.25fr) minmax(320px,.95fr) auto;
+  column-gap:20px; align-items:center;
+}
+.finance-ops .table.table--summary .thead .th:nth-child(2),
+.finance-ops .table.table--summary .tr   .td:nth-child(2){
+  justify-self:center; text-align:center; font-variant-numeric:tabular-nums; font-weight:800;
+}
+.finance-ops .table.table--summary .thead .th:nth-child(3),
+.finance-ops .table.table--summary .tr   .td:nth-child(3){ justify-self:end; }
+
+/* CTA agora usa .btn padrão: apenas dimensões locais */
+.finance-ops .table.table--summary .td .btn{
+  min-width:140px;
+  height:40px;
+  white-space:nowrap;
+  font-weight:800;
+}
+
+/* A célula de expansão SEMPRE ocupa a linha toda */
+.finance-ops .table.table--summary .td.td-expand{
+  grid-column: 1 / -1;
+  padding-top: 0;
+}
+
+/* ====== BREAKDOWN — ocupa 100% e usa UM único mapa de colunas ====== */
+.finance-ops .table.table--summary .td.td-expand > .fin-break{
+  display:block;
+  width:100%;
+  max-width:100%;
+  margin-top:10px;
+  box-sizing:border-box;
+}
+
+/* garante que não herde min-widths de utilitários */
+.finance-ops .table.table--summary .td.td-expand > .fin-break > .table{
+  display:grid;
+  width:100%;
+  max-width:100%;
+  gap:8px;
+  grid-auto-flow: row;
+  min-width: 0 !important;
+}
+
+/* header e linhas do breakdown compartilham as MESMAS colunas */
+.finance-ops .table.table--summary .td.td-expand > .fin-break > .table > .thead,
+.finance-ops .table.table--summary .td.td-expand > .fin-break > .table > .tr{
+  display:grid;
+  grid-template-columns: var(--break-cols);
+  column-gap: 10px;
+  align-items:center;
+}
+
+/* células do breakdown: podem encolher e ellipsis */
+.finance-ops .table.table--summary .td.td-expand > .fin-break > .table :is(.th,.td){
+  min-width:0;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* linha de total do breakdown */
+.finance-ops .table.table--summary .td.td-expand > .fin-break > .table .tr.total .td.blank{
+  grid-column: 1 / 7;
+}
+.finance-ops .table.table--summary .td.td-expand > .fin-break > .table .tr.total .td.label,
+.finance-ops .table.table--summary .td.td-expand > .fin-break > .table .tr.total .td.value{
+  font-weight:800; text-align:right;
+}
+
+/* Paginação (se usada) */
+.finance-ops .pagination-controls{ margin-top:10px; display:flex; align-items:center; gap:8px; }
+.finance-ops .pagination-controls .btn{
+  padding:6px 10px;        /* apenas dimensão local */
+  min-width:36px;
+  height:32px;
+  font-weight:700;
+}
+
+/* Responsivo suave: mantém 3 colunas no summary; breakdown continua fluido */
+@media (max-width:1400px){
+  .finance-ops .table.table--summary .thead,
+  .finance-ops .table.table--summary .tr{
+    grid-template-columns: minmax(460px,1.15fr) minmax(280px,.9fr) auto; column-gap:16px;
+  }
+}
+@media (max-width:1200px){
+  .finance-ops .table.table--summary .thead,
+  .finance-ops .table.table--summary .tr{
+    grid-template-columns: minmax(420px,1.05fr) minmax(250px,.85fr) auto; column-gap:14px;
+  }
+}
+@media (max-width:992px){
+  .finance-ops .table.table--summary .thead,
+  .finance-ops .table.table--summary .tr{
+    grid-template-columns: 1fr .8fr auto; column-gap:12px;
+  }
+}

@@ -1,0 +1,116 @@
+@import "src/styles/partner/PartnerTokens.css";
+
+
+/* Página LL – mobile-first dentro do layout */
+.pml-wrap .page-ll{
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 14px;
+  background: linear-gradient(180deg, var(--c-fourth) 0%, var(--c-third) 100%);
+  min-height: 100%;
+}
+
+/* Card/Form */
+.pml-wrap .ll-card{
+  background:#fff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3d);
+  border: 1px solid rgba(46,148,185,.25);
+  padding: 12px;
+}
+.pml-wrap .ll-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; }
+.pml-wrap .ll-header h2{ font-size: 1rem; font-weight: 900; margin: 0; color: var(--c-second); }
+
+/* Toasts */
+.pml-wrap .ll-toast{ padding:.4rem .75rem; border-radius:8px; font-size:.85rem; display:inline-flex; align-items:center; gap:6px; }
+.pml-wrap .ll-toast.success{ background:#ecfdf5; color:#065f46; }
+.pml-wrap .ll-toast.error{   background:#fef2f2; color:#b91c1c; }
+
+/* Form */
+.pml-wrap .ll-form{ border-top:1px solid #e5e7eb; padding-top: 10px; margin-top: 10px; }
+.pml-wrap .ll-row{ margin-bottom: .75rem; }
+.pml-wrap .ll-label{ display:block; font-size:.8rem; font-weight:800; margin-bottom:.25rem; color:#374151; }
+.pml-wrap .ll-input{
+  width:100%; padding:.5rem .65rem; border:1px solid #cbd5e1; border-radius:10px; font-size:.9rem; background:#fff;
+}
+.pml-wrap .ll-input:focus{ outline:none; border-color: var(--c-first); box-shadow: 0 0 0 2px rgba(46,148,185,.25); }
+
+/* grid 2 col desktop */
+.pml-wrap .ll-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:.75rem; margin-bottom: .75rem; }
+@media (max-width: 640px){ .pml-wrap .ll-grid{ grid-template-columns: 1fr; } }
+
+/* Uploads */
+.pml-wrap .ll-upload-btn{
+  display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+  background:#f9fafb; border:1px dashed #9ca3af; padding:.5rem .75rem; border-radius:8px; font-size:.85rem; color:#374151;
+}
+.pml-wrap .ll-upload-btn input[type="file"]{ display:none; }
+.pml-wrap .ll-previews{ display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.5rem; }
+.pml-wrap .ll-preview img{
+  width:60px; height:60px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; background:#fff;
+}
+
+/* Buttons */
+.pml-wrap .btn{ display:inline-flex; align-items:center; gap:4px; padding:.45rem .8rem; border-radius:10px; font-size:.85rem; font-weight:800; cursor:pointer; border:1px solid transparent; }
+.pml-wrap .btn.primary{ background: linear-gradient(180deg, var(--c-first), #2384a9); color:#fff; }
+.pml-wrap .btn.primary:hover{ filter: brightness(1.03); }
+.pml-wrap .btn.outline{ background:#fff; border:1px solid #cbd5e1; color:#374151; }
+.pml-wrap .btn.outline:hover{ background:#f8fafc; }
+.pml-wrap .btn.danger{ background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; }
+.pml-wrap .btn.danger:hover{ background:#fee2e2; }
+
+.pml-wrap .icon-btn{ background: rgba(0,0,0,.55); border: none; color: #fff; border-radius: 50%; width: 22px; height: 22px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+
+/* Lista */
+.pml-wrap .ll-list{
+  background:#fff; border-radius: var(--radius-lg); box-shadow: var(--shadow-3d); padding: 12px;
+  border: 1px solid rgba(46,148,185,.25);
+}
+.pml-wrap .ll-list h3{ font-size: 1rem; font-weight: 900; margin: 0 0 .75rem 0; color: var(--c-second); }
+
+.pml-wrap .ll-items{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:12px; }
+.pml-wrap .ll-item{ border:1px solid #e5e7eb; border-radius:12px; padding:10px; background:#fff; position:relative; }
+
+.pml-wrap .ll-item-top{
+  display:grid; grid-template-columns: 22px 1fr auto; align-items:center; gap:10px; padding:10px 12px;
+  border:1px solid #e5e7eb; background:#f8fafb; border-radius:10px; cursor:pointer; width:100%; text-align:left;
+}
+.pml-wrap .ll-toggle{ display:grid; place-items:center; width:22px; height:22px; border-radius:6px; background:#fff; border:1px solid #e5e7eb; }
+.pml-wrap .ll-item-title{ display:flex; align-items:center; gap:8px; min-width:0; }
+.pml-wrap .ll-item-title strong{ font-size: 1rem; }
+.pml-wrap .ll-badge{ font-size:.75rem; background:#e0f2fe; color:#1e3a8a; border-radius:6px; padding:.12rem .4rem; white-space:nowrap; }
+.pml-wrap .ll-item-meta{ font-size:.85rem; color:#374151; font-weight: 700; }
+
+/* delete apenas expandido */
+.pml-wrap .ll-del-lane{ display:none; position:absolute; top:10px; right:10px; z-index:2; white-space:nowrap; }
+.pml-wrap .ll-item.expanded .ll-del-lane{ display:inline-flex; }
+.pml-wrap .ll-del-lane.btn.danger{ padding:.35rem .6rem; font-size:.75rem; }
+
+.pml-wrap .ll-item-summary{ display:flex; flex-wrap:wrap; gap:8px 10px; margin-top:8px; color:#374151; }
+.pml-wrap .ll-chip{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; background:#f3f4f6; font-size:.8rem; }
+.pml-wrap .ll-chip.status.pending{  background:#fff7ed; color:#9a3412; }
+.pml-wrap .ll-chip.status.approved{ background:#ecfdf5; color:#065f46; }
+.pml-wrap .ll-chip.status.rejected{ background:#fef2f2; color:#991b1b; }
+.pml-wrap .ll-chip.status.paid{     background:#eef2ff; color:#3730a3; }
+
+.pml-wrap .ll-item-details{ margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb; }
+.pml-wrap .ll-item-receipts{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.pml-wrap .ll-receipt{ position:relative; }
+.pml-wrap .ll-receipt img{ width:78px; height:78px; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; background:#fff; display:block; }
+.pml-wrap .ll-receipt .icon-btn{ position:absolute; top:-6px; right:-6px; }
+
+/* Paginação */
+.pml-wrap .ll-pager{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top: 10px; }
+.pml-wrap .ll-pageinfo{ color:#475569; font-size:.85rem; }
+.pml-wrap .ll-total{ opacity:.7; }
+
+/* Mobile tweaks */
+@media (max-width: 640px){
+  .pml-wrap .page-ll{ padding: 10px; gap: 10px; }
+  .pml-wrap .ll-card, .pml-wrap .ll-list{ padding: 10px; border-radius: 12px; }
+  .pml-wrap .ll-item{ padding: 8px; }
+  .pml-wrap .ll-item-top{ padding: 8px 10px; grid-template-columns: 20px 1fr auto; gap: 8px; }
+  .pml-wrap .ll-item-title strong{ font-size: .92rem; }
+  .pml-wrap .ll-item-meta{ font-size: .8rem; }
+  .pml-wrap .ll-chip{ font-size: .75rem; }
+  .pml-wrap .ll-receipt img{ width: 64px; height: 64px; }
+}

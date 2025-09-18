@@ -1,0 +1,119 @@
+/* ================================
+   BillingDetails (tabela de 8 colunas)
+   Estrutura real do markup:
+   .table.table--wide
+     .thead > .th (8)
+     .tr    > .td (8)
+   Ordem das colunas:
+   1 Created At | 2 Client | 3 Service | 4 Type | 5 Observation | 6 Amount | 7 Status | 8 Actions
+   ================================= */
+
+/* Garanta que o wrapper possa encolher dentro de pais flex */
+.finance-page,
+.finance-page .fin-card,
+.finance-page .table.table--wide,
+.finance-page .table.table--wide .thead,
+.finance-page .table.table--wide .tr {
+  min-width: 0;
+}
+
+/* Grid do header e das linhas (mesma grade) */
+.finance-page .table.table--wide .thead,
+.finance-page .table.table--wide .tr {
+  display: grid;
+  grid-template-columns:
+    160px                /* 1 Created At   */
+    minmax(220px,1fr)    /* 2 Client       */
+    minmax(140px,.7fr)   /* 3 Service      */
+    100px                /* 4 Type         */
+    minmax(180px,1fr)    /* 5 Observation  */
+    120px                /* 6 Amount       */
+    130px                /* 7 Status       */
+    minmax(210px,1fr);   /* 8 Actions      */
+  gap: 8px;
+  align-items: center;
+}
+
+/* Células podem encolher dentro do grid */
+.finance-page .table.table--wide .thead > .th,
+.finance-page .table.table--wide .tr    > .td {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Header: nunca quebrar em 2 linhas */
+.finance-page .table.table--wide .thead > .th {
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: none;
+  line-height: 1.1;
+}
+
+/* Colunas que precisam SEMPRE ficar em uma linha */
+.finance-page .table.table--wide .tr > .td.right,
+.finance-page .table.table--wide .tr > .td.center { white-space: nowrap; }
+
+/* Status chip e botões sem quebra */
+.finance-page .table.table--wide .td .tag,
+.finance-page .table.table--wide .td .btn { white-space: nowrap; }
+
+/* Ações: mantém botões lado a lado */
+.finance-page .table.table--wide .tr > .td:last-child {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+/* ====== Responsivo: esconder colunas menos críticas ====== */
+@media (max-width: 1200px) {
+  .finance-page .table.table--wide .thead,
+  .finance-page .table.table--wide .tr {
+    /* escondendo Observation (5) */
+    grid-template-columns:
+      150px                      /* 1 Created */
+      minmax(200px,1fr)          /* 2 Client  */
+      minmax(130px,.6fr)         /* 3 Service */
+      90px                       /* 4 Type    */
+      0                          /* 5 Obs (off) */
+      110px                      /* 6 Amount  */
+      120px                      /* 7 Status  */
+      minmax(210px,1fr);         /* 8 Actions */
+  }
+  /* some a coluna 5 (Observation) */
+  .finance-page .table.table--wide .thead > .th:nth-child(5),
+  .finance-page .table.table--wide .tr    > .td:nth-child(5) { display: none; }
+}
+
+@media (max-width: 980px) {
+  .finance-page .table.table--wide .thead,
+  .finance-page .table.table--wide .tr {
+    /* escondendo Type (4) também */
+    grid-template-columns:
+      140px                      /* 1 Created */
+      minmax(190px,1fr)          /* 2 Client  */
+      minmax(120px,.6fr)         /* 3 Service */
+      0                          /* 4 Type (off) */
+      0                          /* 5 Obs (off) */
+      100px                      /* 6 Amount  */
+      110px                      /* 7 Status  */
+      minmax(210px,1fr);         /* 8 Actions */
+  }
+  /* some as colunas 4 (Type) e 5 (Observation) */
+  .finance-page .table.table--wide .thead > .th:nth-child(4),
+  .finance-page .table.table--wide .tr    > .td:nth-child(4),
+  .finance-page .table.table--wide .thead > .th:nth-child(5),
+  .finance-page .table.table--wide .tr    > .td:nth-child(5) { display: none; }
+}
+
+/* ====== Fallback “anti-utilitário” (só se algo ainda forçar quebra)
+.finance-page .table.table--wide .thead > .th {
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
+}
+*/

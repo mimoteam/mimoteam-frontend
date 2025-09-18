@@ -1,0 +1,146 @@
+@import "src/styles/partner/PartnerTokens.css";
+
+
+
+/* Escopo: reimbursements dentro do layout mobile */
+.pml-wrap .reimb-page{
+  display:grid; gap:12px;
+  width: min(960px, 100%); margin-inline:auto;
+  padding: clamp(10px, 3vw, 16px);
+  overflow-x:hidden;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+  background: linear-gradient(180deg, var(--c-fourth) 0%, var(--c-third) 100%);
+  color: var(--c-second);
+}
+
+/* ===== Cards ===== */
+.pml-wrap .reimb-page .card{
+  background:#fff; border:1px solid #E2E8F0; border-radius:14px;
+  padding: clamp(12px, 2.6vw, 16px);
+  box-shadow: var(--shadow-3d); min-width: 0;
+}
+.pml-wrap .reimb-page .card-head{
+  display:flex; gap:10px; align-items:center; margin-bottom:10px; min-width:0;
+}
+.pml-wrap .reimb-page .card-head .icon{
+  inline-size:36px; block-size:36px; display:grid; place-items:center;
+  border-radius:10px; background:#F1F5F9; color:#0f172a; flex:0 0 auto;
+}
+.pml-wrap .reimb-page .card-head h2{ margin:0; font-size:16px; font-weight:900; color:#0f172a; }
+.pml-wrap .reimb-page .card-head .muted{ margin:2px 0 0; font-size:12px; color:#64748B; }
+
+/* ===== Form ===== */
+.pml-wrap .reimb-page .form-grid{ display:grid; gap:10px; grid-template-columns: 1fr; }
+@media (min-width: 880px){ .pml-wrap .reimb-page .form-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.pml-wrap .reimb-page .form-grid .field--full{ grid-column: 1 / -1; }
+
+.pml-wrap .reimb-page .field{ min-width:0; }
+.pml-wrap .reimb-page .field label{
+  display:flex; align-items:center; gap:6px; font-size:12px; font-weight:800; color:#475569; margin-bottom:6px;
+}
+.pml-wrap .reimb-page .field input[type="text"],
+.pml-wrap .reimb-page .field input[type="date"],
+.pml-wrap .reimb-page .field input[type="number"],
+.pml-wrap .reimb-page .field textarea{
+  width:100%; border:1px solid #CBD5E1; border-radius:10px; padding:10px 12px;
+  font-size:16px; background:#fff; color:#0f172a; min-width:0;
+}
+.pml-wrap .reimb-page .field textarea{ resize: vertical; }
+.pml-wrap .reimb-page .field .error{ border-color:#ef4444; }
+.pml-wrap .reimb-page .err{ color:#b91c1c; font-size:12px; margin-top:4px; }
+.pml-wrap .reimb-page .readonly-chip{
+  display:inline-flex; align-items:center; gap:6px;
+  border:1px solid #E2E8F0; background:#F8FAFC;
+  border-radius:999px; padding:6px 10px; font-weight:800; font-size:12px;
+}
+
+/* Ações do form */
+.pml-wrap .reimb-page .form-actions{
+  display:flex; gap:8px; margin-top:8px; justify-content:flex-end;
+}
+@media (max-width: 520px){
+  .pml-wrap .reimb-page .form-actions{ justify-content:stretch; }
+  .pml-wrap .reimb-page .form-actions .btn{ inline-size:100%; }
+}
+.pml-wrap .reimb-page .btn{
+  border:1px solid #CBD5E1; background:#fff; border-radius:10px;
+  padding:10px 14px; cursor:pointer; font-weight:800; color:#0f172a;
+}
+.pml-wrap .reimb-page .btn-primary{
+  background: linear-gradient(180deg, var(--c-first), #2384a9);
+  border-color:#1E40AF; color:#fff;
+}
+
+/* ===== List controls ===== */
+.pml-wrap .reimb-page .list-controls{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;
+}
+.pml-wrap .reimb-page .month-filter{
+  display:flex; align-items:center; gap:8px;
+  border:1px solid #E2E8F0; border-radius:12px; padding:8px 10px; background:#fff;
+}
+.pml-wrap .reimb-page .month-filter label{ font-size:12px; color:#64748B; font-weight:800; }
+.pml-wrap .reimb-page .month-filter input[type="month"]{ border:0; outline:0; background:transparent; font-size:14px; color:#0f172a; }
+.pml-wrap .reimb-page .count-pill{
+  background:#F1F5F9; border:1px solid #E2E8F0; border-radius:999px;
+  padding:6px 10px; font-size:12px; font-weight:900; color:#334155;
+}
+
+/* ===== Tabela (lista) ===== */
+.pml-wrap .reimb-page .r-table{
+  width:100%; border:1px solid #E2E8F0; border-radius:12px; background:#fff;
+  display:block; overflow-x:auto; overflow-y:auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
+.pml-wrap .reimb-page .r-thead, .pml-wrap .reimb-page .r-tr{
+  display:grid;
+  grid-template-columns:
+    minmax(110px, 140px)
+    minmax(180px, 1fr)
+    minmax(110px, 130px)
+    minmax(240px, 1.2fr)
+    minmax(84px, 100px);
+  align-items:center; gap:8px; min-width: 760px;
+}
+.pml-wrap .reimb-page .r-thead{
+  background:#F8FAFC; padding:10px; border-bottom:1px solid #E2E8F0;
+  position: sticky; top: 0; z-index: 1;
+}
+.pml-wrap .reimb-page .r-th{ font-size:12px; font-weight:900; color:#475569; }
+.pml-wrap .reimb-page .r-tbody .r-tr{ padding:10px; border-bottom:1px dashed #E2E8F0; }
+.pml-wrap .reimb-page .r-tbody .r-tr:last-child{ border-bottom:0; }
+.pml-wrap .reimb-page .r-td{
+  font-size:13px; color:#0f172a; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.pml-wrap .reimb-page .r-td.w-notes{ white-space: normal; word-break: break-word; }
+.pml-wrap .reimb-page .right{ text-align:right; }
+
+@media (max-width: 420px){
+  .pml-wrap .reimb-page .r-thead, .pml-wrap .reimb-page .r-tr{ min-width:760px; }
+}
+
+/* Empty & paginação */
+.pml-wrap .reimb-page .empty{
+  padding:14px; border:1px dashed #CBD5E1; border-radius:12px; text-align:center; color:#64748B;
+}
+.pml-wrap .reimb-page .pagination{
+  display:flex; align-items:center; justify-content:center; gap:12px; margin-top:10px;
+}
+.pml-wrap .reimb-page .pg-btn{
+  width:42px; height:42px; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid #CBD5E1; border-radius:12px;
+  background: linear-gradient(180deg,#ffffff,#f8fafc);
+  box-shadow: 0 1px 2px rgba(2,6,23,.04); cursor:pointer;
+}
+.pml-wrap .reimb-page .pg-btn:disabled{ opacity:.5; cursor:not-allowed; }
+.pml-wrap .reimb-page .pg-indicator{
+  padding:8px 12px; border-radius:999px; font-weight:900;
+  background:#F1F5F9; color:#334155; border:1px solid #E2E8F0; font-size:12px;
+}
+
+/* Ações */
+.pml-wrap .reimb-page .btn-icon{
+  width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid #E2E8F0; border-radius:10px; background:#fff; cursor:pointer;
+}
+.pml-wrap .reimb-page .btn-icon.danger{ color:#B91C1C; border-color:#FCA5A5; background:#FEF2F2; }

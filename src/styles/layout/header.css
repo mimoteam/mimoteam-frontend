@@ -1,0 +1,286 @@
+/* =========================================================
+   Header unificado (Admin/Finance desktop) + Partner mobile
+   Usa tokens globais: --surface-1/2, --line, --brand-*, --ring,
+   --ink, --muted, --shadow-1
+   ========================================================= */
+
+/* -----------------------------
+   Variáveis de tamanho do header
+   ----------------------------- */
+:root{
+  --header-h: 112px;      /* altura desktop */
+  --header-pad-x: 24px;   /* padding horizontal */
+  --header-gap: 24px;     /* espaço entre left/right */
+
+  --header-btn: 48px;     /* tamanho de botões (notif/logout) */
+  --avatar-size: 38px;    /* avatar */
+  --clock-pad: 12px 16px; /* relógio */
+}
+
+/* ---------------------------------
+   Base: sticky, 1 linha, desktop-on
+   --------------------------------- */
+.app-header{
+  position: sticky; top: 0; z-index: 30;
+  min-height: var(--header-h);
+  padding: 0 var(--header-pad-x);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--header-gap);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+
+/* lados do header */
+.app-header > .header-left,
+.app-header > .header-right{
+  display: flex; align-items: center; gap: 12px;
+}
+
+/* -------------------
+   Títulos e subtítulos
+   ------------------- */
+.page-info h1.page-title{
+  margin: 0 0 4px 0;
+  font-size: 26px; font-weight: 900; letter-spacing: -.5px;
+  background: linear-gradient(135deg, var(--brand-400) 0%, var(--brand-500) 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.page-info .page-subtitle{ margin: 0; font-size: 14px; color: var(--muted); }
+
+/* -----------------
+   Relógio do header
+   ----------------- */
+.header-clock{
+  padding: var(--clock-pad);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  text-align: center;
+}
+.clock-time{ font-size: 16px; font-weight: 800; color: var(--ink); line-height: 1; }
+.clock-date{ font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* -----------------
+   Botões “redondos”
+   ----------------- */
+.header-btn,
+.logout-btn{
+  width: var(--header-btn); height: var(--header-btn);
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface-2); color: #64748b;
+  transition: .18s ease; cursor: pointer;
+}
+.header-btn:hover,
+.logout-btn:hover{
+  background: #fff; border-color: var(--brand-400);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(2,8,23,.08);
+}
+.header-btn:focus-visible,
+.logout-btn:focus-visible{ outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.logout-btn:hover{ color: #b91c1c; border-color: #fecaca; }
+
+/* ---------------------------
+   Badge de notificação pequeno
+   --------------------------- */
+.notification-badge{
+  position: absolute; top: -4px; right: -4px;
+  width: 18px; height: 18px; border-radius: 999px;
+  background: #ef4444; color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ------------------------
+   User pill (avatar + infos)
+   ------------------------ */
+.user-profile{
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px 6px 6px; height: var(--header-btn);
+  border-radius: 999px; transition: .18s ease; cursor: default;
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.user-profile:hover{
+  background: #fff; border-color: var(--brand-400);
+  box-shadow: 0 8px 22px rgba(2,8,23,.08); transform: translateY(-1px);
+}
+.user-avatar{
+  width: var(--avatar-size); height: var(--avatar-size); border-radius: 50%;
+  background: linear-gradient(135deg,#cfe6ff,#eaf2ff);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 900; color: #1e293b;
+  overflow: hidden; border: 2px solid #fff; box-shadow: 0 1px 0 rgba(0,0,0,.05);
+}
+.user-avatar img{ width: 100%; height: 100%; object-fit: cover; display: block; }
+.user-info{ display: flex; flex-direction: column; line-height: 1.05; }
+.user-name{
+  font-size: 12.5px; font-weight: 900; color: #0b1021; max-width: 140px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.user-role{ font-size: 11px; font-weight: 700; color: var(--muted); }
+
+/* ------------------------
+   Breadcrumb / busca / chips
+   ------------------------ */
+.hdr-sub{
+  display: grid; grid-template-columns: 1fr minmax(280px,420px) auto; gap: 12px;
+  padding: 10px 0 12px; border-top: 1px solid var(--line); margin-top: 6px;
+}
+.hdr-breadcrumbs{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #475569; }
+.hdr-breadcrumbs .crumb{ font-size: 12px; font-weight: 700; color: var(--muted); display: inline-flex; align-items: center; }
+.hdr-breadcrumbs .crumb-sep{ margin: 0 6px; opacity: .6; }
+.hdr-search{
+  position: relative; display: flex; align-items: center;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 10px 8px 34px;
+}
+.hdr-search .search-ico{ position: absolute; left: 10px; top: 50%; transform: translateY(-50%); opacity: .7; }
+.hdr-search input{
+  width: 100%; border: none; background: transparent; outline: none;
+  font-size: 13px; color: var(--ink);
+}
+.hdr-quick{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hdr-quick .chip{
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: var(--surface-1); border: 1px solid var(--line); color: #334155;
+}
+
+/* =========================================================
+   VARIANTE PARTNER (MOBILE)
+   - Título branco
+   - Kebab e menu estilizados
+   - Header mais baixo
+   ========================================================= */
+.app-header.partner-header{
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+  color: #fff !important;
+  border-bottom-color: rgba(255,255,255,.12);
+}
+
+/* título branco (pedido 1) */
+.partner-header .page-title{
+  color: #fff !important;
+  background: none; -webkit-text-fill-color: unset;
+  font-weight: 900;
+}
+.partner-header .page-subtitle{ color: rgba(255,255,255,.8); }
+
+/* Botões no tema escuro */
+.partner-header .header-btn,
+.partner-header .logout-btn{
+  background: rgba(255,255,255,.10);
+  border-color: rgba(255,255,255,.18);
+  color: #fff;
+}
+.partner-header .header-btn:hover,
+.partner-header .logout-btn:hover{
+  background: rgba(255,255,255,.16);
+  border-color: rgba(255,255,255,.28);
+}
+
+/* (2) Menu mobile/kebab estilizado */
+.header-kebab{
+  width: 40px; height: 40px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.10); color: #fff;
+  border: 1px solid rgba(255,255,255,.18); transition: .18s ease;
+}
+.header-kebab:hover{ background: rgba(255,255,255,.16); }
+.kebab-wrap{ position: relative; }
+.kebab-menu{
+  position: absolute; right: 0; top: calc(100% + 8px);
+  min-width: 160px; padding: 6px; z-index: 50;
+  background: rgba(13,19,45,.98); color: #fff;
+  border: 1px solid rgba(255,255,255,.12); border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+.kebab-menu button{
+  width: 100%; text-align: left; padding: 10px 12px; border: 0; background: transparent;
+  color: #fff; border-radius: 8px; cursor: pointer; font-weight: 700;
+}
+.kebab-menu button:hover{ background: rgba(255,255,255,.06); }
+
+/* =========================================================
+   Responsivo
+   ========================================================= */
+.mobile-only{ display: none; }
+.desktop-only{ display: initial; }
+
+@media (max-width: 1024px){
+  .hdr-sub{ grid-template-columns: 1fr; }
+  .hdr-search{ order: 3; }
+  .hdr-quick{ order: 2; }
+  .mobile-only{ display: initial; }
+  .desktop-only{ display: none; }
+}
+
+@media (max-width: 768px){
+  :root{
+    --header-h: 76px;        /* (3) header mais baixo no mobile */
+    --header-btn: 40px;
+    --avatar-size: 32px;
+    --header-gap: 14px;
+    --header-pad-x: 14px;
+  }
+
+  .header-clock{ display: none !important; }     /* relógio some no mobile */
+  .user-profile .user-info{ display: none; }     /* só avatar no mobile */
+
+  .partner-header{
+    /* leve “pill” no mobile */
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 22px;
+    margin: 12px 12px 0;
+    padding: 12px 14px;
+    box-shadow: var(--shadow-1);
+  }
+
+  .partner-header .page-title{
+    font-size: 18px; line-height: 1.2; letter-spacing: .2px;
+  }
+  .partner-header .page-subtitle{
+    color: rgba(255,255,255,.75) !important; font-size: 12px; margin-top: 2px;
+  }
+  .partner-header .page-userline,
+  .partner-header .page-userline.is-partner{
+    color: rgba(255,255,255,.65) !important; font-size: 12px;
+  }
+}
+
+/* =========================================================
+   Notifications dropdown (desktop)
+   ========================================================= */
+.notif-wrap{ position: relative; }
+.notif-dropdown{
+  position: absolute; right: 0; top: calc(100% + 8px);
+  width: 320px; max-height: 360px; overflow: auto;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(2,8,23,.12); padding: 8px; z-index: 60;
+}
+.notif-head{ display: flex; align-items: center; gap: 8px; padding: 6px; border-bottom: 1px solid var(--line); }
+.notif-head .spacer{ flex: 1; }
+.notif-head .link{
+  background: none; border: 0; color: var(--brand-700,#1E6ECB);
+  font-weight: 700; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+}
+.notif-list{ display: grid; gap: 6px; padding: 8px 4px; }
+.notif-item{
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: #fff; cursor: pointer;
+}
+.notif-item:hover{ background: #f8fafc; }
+.notif-item.read{ opacity: .75; }
+.notif-item .ni-title{ font-weight: 800; font-size: 13px; }
+.notif-item .ni-msg{ font-size: 12px; color: #334155; margin-top: 2px; }
+.notif-item .ni-time{ font-size: 11px; color: #64748B; margin-top: 2px; }
+
+/* ----------------
+   Utilitário glass
+   ---------------- */
+.glass-card{
+  background: rgba(255,255,255,.75);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid rgba(226,232,240,.8);
+  box-shadow: 0 10px 24px rgba(2,8,23,.06);
+  border-radius: 12px;
+}

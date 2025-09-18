@@ -5,7 +5,7 @@ import {
   Edit3, Trash2, RefreshCw, Save, AlertCircle, CheckCircle, Loader, Calculator,  Building, Plane, Baby, Coffee, Car, Home, Globe, X, AlertTriangle, Info,
   ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, List, Copy, Download
 } from 'lucide-react';
-import '../styles/Services.css';
+import '../styles/pages/Services.css';
 import { useCosts } from '../contexts/CostsContext';
 import { api as http } from '../api/http';
 
@@ -42,6 +42,11 @@ function titleCaseStrict(str = '') {
   return String(str).trim().toLowerCase().split(/\s+/)
     .map(w => w ? (w[0].toUpperCase() + w.slice(1)) : w).join(' ');
 }
+
+const alpha = (a, b) =>
+  String(a).localeCompare(String(b), 'en', { sensitivity: 'base', numeric: true });
+
+const alphaByName = (a, b) => alpha(a?.name ?? '', b?.name ?? '');
 
 // Formata "YYYY-MM-DD" para data local (meio-dia local p/ evitar -1 dia)
 function formatYmdToLocale(ymd, locale = 'en-US') {
@@ -401,7 +406,7 @@ const Services = () => {
   const [services, setServices] = useState({ data: [], totalPages: 1, totalRecords: 0, currentPage: 1 });
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const PAGE_SIZE = 5;
   const [sortField, setSortField] = useState('serviceDate');
   const [sortDirection, setSortDirection] = useState('desc');
 
@@ -434,6 +439,7 @@ const [filters, setFilters] = useState({
   const firstNameRef = useRef(null);
   const serviceDateRef = useRef(null);
   const addToCartRef = useRef(() => {});
+  const tableBodyRef = useRef(null);
 
   /* ===== NOTIFICAÇÕES ===== */
   const [notifications, setNotifications] = useState([]);
@@ -455,10 +461,13 @@ const [filters, setFilters] = useState({
   );
 
   /* ===== Teams, Types ===== */
-  const teams = useMemo(() => ([
+const teams = useMemo(
+   () => ([
+     { id: 'BR', name: 'Brazil Team' },
     { id: 'US', name: 'US Team' },
-    { id: 'BR', name: 'Brazil Team' }
-  ]), []);
+   ].sort(alphaByName)),
+   []
+ );
 
   const serviceTypes = useMemo(() => ([
     // Variável
@@ -484,8 +493,7 @@ const [filters, setFilters] = useState({
   ]), []);
 
   /* ===== Localizações e Parques ===== */
-  const locations = useMemo(() => (['Orlando','Califórnia']), []);
-  const parksByLocation = useMemo(() => ({
+const locations = useMemo(() => (['Califórnia','Orlando'].sort(alpha)), []);  const parksByLocation = useMemo(() => ({
     Orlando: [
       'Disney World','Universal Studios','Epic','SeaWorld','Busch Gardens','Legoland','Peppa Pig','Volcano Bay'
     ],
@@ -639,6 +647,9 @@ const paymentStatusLabel = (norm) => ({
     return updated;
   };
 
+  useEffect(() => {
+   try { tableBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+  }, [currentPage]);
   /* ===== Carrega parceiros (backend) ===== */
   useEffect(() => {
     (async () => {
@@ -1283,7 +1294,7 @@ const loadServices = useCallback(
       try {
        const res = await fetchServicesCompat({
   page: currentPage,
-  pageSize,
+  pageSize: PAGE_SIZE,
   sortField,
   sortDirection,
   filters,
@@ -1303,11 +1314,35 @@ if (filters.client && String(filters.client).trim()) {
   });
 }
 
-        const totalRecords = Number(res.total ?? res.totalRecords ?? res.count ?? items.length);
-        const totalPages = Number(res.totalPages ?? Math.max(1, Math.ceil(totalRecords / pageSize)));
-        const page = Number(res.page ?? currentPage);
+           const backendPaged =
+         typeof res.page !== 'undefined' ||
+         typeof res.total !== 'undefined' ||
+         typeof res.totalRecords !== 'undefined' ||
+         typeof res.totalPages !== 'undefined';
 
-        setServices({ data: items, totalPages, totalRecords, currentPage: page });
+        const totalRecordsRaw = Number(
+          res.total ?? res.totalRecords ?? res.count ?? (Array.isArray(rawItems) ? rawItems.length : items.length)
+        );
+
+        let page = Number(res.page ?? currentPage);
+       let totalPages = Number(res.totalPages ?? Math.max(1, Math.ceil(totalRecordsRaw / PAGE_SIZE)));
+        let pagedItems = items;
+
+        // Fallback: se o backend não paginar, paginamos aqui
+        if (!backendPaged) {
+          const start = (currentPage - 1) * PAGE_SIZE;
+           pagedItems = items.slice(start, start + PAGE_SIZE);
+          page = currentPage;
+          totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+        }
+
+        setServices({
+          data: pagedItems,
+          totalPages,
+          totalRecords: backendPaged ? totalRecordsRaw : items.length,
+          currentPage: page
+        });
+
       } catch (e) {
         setServices({ data: [], totalPages: 1, totalRecords: 0, currentPage: 1 });
       } finally {
@@ -1315,13 +1350,12 @@ if (filters.client && String(filters.client).trim()) {
       }
     }, 200);
   })(),
-  [currentPage, pageSize, sortField, sortDirection, filters, activePartners, serviceTypes]
+  [currentPage, sortField, sortDirection, filters, activePartners, serviceTypes]
 );
 
 useEffect(() => { if (viewMode === 'list') loadServices(); }, [viewMode, loadServices]);
 useEffect(() => { if (viewMode === 'list') loadServices(); },
-  [currentPage, pageSize, sortField, sortDirection, filters, viewMode, loadServices]);
-
+[currentPage, sortField, sortDirection, filters, viewMode, loadServices]);
 /* ===== Filtros e ordenação ===== */
 const handleSort = (field) => {
   const apiField = SORT_MAP[field] || (field === 'client' ? 'firstName' : field);
@@ -1775,7 +1809,7 @@ const bulkDeleteSelected = async () => {
                         <div className="col-obs">Obs.</div>
                         <div className="col-actions">Actions</div>
                       </div>
-                      <div className="cart-table-body">
+                      <div className="table-body" ref={tableBodyRef}>
                         {cart.map((service) => (
                           <div key={service.id} className="cart-row">
                             <div className="col-service">
@@ -2130,7 +2164,7 @@ const bulkDeleteSelected = async () => {
                   <div className="pagination-info">
                     <span>
                       {services.totalRecords > 0
-                        ? `Showing ${((services.currentPage - 1) * pageSize) + 1} to ${Math.min(services.currentPage * pageSize, services.totalRecords)} of ${services.totalRecords} services`
+                        ? `Showing ${((services.currentPage - 1) * PAGE_SIZE) + 1} to ${Math.min(services.currentPage * PAGE_SIZE, services.totalRecords)} of ${services.totalRecords} services`
                         : 'Showing 0 to 0 of 0 services'}
                     </span>
                   </div>
@@ -2169,17 +2203,7 @@ const bulkDeleteSelected = async () => {
                     </button>
                   </div>
 
-                  <div className="page-size-selector">
-                    <span>Show:</span>
-                    <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}>
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                    <span>per page</span>
-                  </div>
+           
                 </div>
 
                 {/* Estado vazio */}

@@ -1,0 +1,44 @@
+/* ===== FORCE LIGHT (cola por último) ===== */
+:root,
+:root[data-theme="dark"]{
+  /* marca */
+  --brand-400:#90D5FF;
+  --brand-500:#5BA7F7;
+  --brand-600:#2D8BEF;
+  --brand-700:#1E6ECB;
+
+  /* superfícies e textos (LIGHT) */
+  --bg:#ebeefa;
+  --bg-top:#FAFBFF;
+  --surface-1:#FFFFFF;
+  --surface-2:#F8FAFC;
+
+  --ink:#1E293B;
+  --ink-soft:#334155;
+  --muted:#64748B;
+
+  --line:#E2E8F0;
+  --white:#fff;
+
+  /* estados */
+  --danger:#e53e3e;
+  --danger-700:#c53030;
+
+  /* foco/sombras */
+  --ring: rgba(144,213,255,.45);
+  --radius-lg:16px;
+  --radius-xl:20px;
+  --shadow-1:0 10px 24px rgba(15,23,42,.08);
+  --shadow-2:0 18px 42px rgba(2,8,23,.12);
+
+  /* decor */
+  --bg-tint-1: rgba(144,213,255,.18);
+  --bg-tint-2: rgba(45,139,239,.10);
+
+  color-scheme: light; /* mantém nativos (inputs/selects) claros */
+}
+
+/* Ignora dark do sistema */
+@media (prefers-color-scheme: dark){
+  :root{ color-scheme: light; }
+}

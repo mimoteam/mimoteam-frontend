@@ -16,6 +16,7 @@ import {
   Trash2
 } from 'lucide-react';
 
+import '../styles/pages/Dashboard.css';
 /* ===== API imports (robustos a nomes diferentes) ===== */
 import * as servicesApi from '../api/services';
 import * as paymentsApi from '../api/payments';

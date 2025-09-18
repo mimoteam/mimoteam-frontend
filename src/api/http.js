@@ -7,6 +7,9 @@ const RAW_BASE = (import.meta?.env?.VITE_API_URL || "http://localhost:4000").rep
 export const API_URL = /\/api$/i.test(RAW_BASE) ? RAW_BASE : `${RAW_BASE}/api`;
 const DEBUG = !!(import.meta?.env?.VITE_HTTP_DEBUG);
 
+// ← origem SEM /api (para servir /uploads corretamente)
+const ORIGIN_URL = API_URL.replace(/\/api$/i, "");
+
 /** Utils */
 const toAbsolutePath = (p) =>
   !p ? "/" : (/^https?:\/\//i.test(p) ? p : (p.startsWith("/") ? p : `/${p}`));
@@ -14,7 +17,18 @@ const toAbsolutePath = (p) =>
 export function toAbsoluteUrl(u) {
   if (!u) return "";
   const s = String(u);
+
+  // já é absoluta ou data URI
   if (/^(data:|https?:\/\/)/i.test(s)) return s;
+
+  // uploads devem sair da raiz do host, não de /api
+  if (s.startsWith("/uploads/")) {
+    const base = ORIGIN_URL.replace(/\/$/, "");
+    const path = s.startsWith("/") ? s : `/${s}`;
+    return `${base}${path}`;
+  }
+
+  // demais rotas continuam indo para /api
   const base = API_URL.replace(/\/$/, "");
   const path = s.startsWith("/") ? s : `/${s}`;
   return `${base}${path}`;
@@ -53,14 +67,11 @@ function fromMaybeJson(raw) {
         o?.data?.access_token || o?.data?.token || o?.data?.jwt || o?.data?.id_token || o?.data?.Authorization ||
         "";
       return stripBearer(v);
-    } catch {
-      // não era JSON válido; usa string bruta
-    }
+    } catch {/* usa string bruta */}
   }
   return s;
 }
 
-// Helpers extra (não interferem em outras páginas)
 function readCookieToken() {
   try {
     if (typeof document === "undefined") return "";
@@ -137,7 +148,7 @@ export const clearAuthToken = () => {
   } catch {}
 };
 
-// Bootstrap leve: só captura token de query/cookie se ainda não houver um salvo
+// Bootstrap leve
 try {
   if (typeof window !== "undefined") {
     const has = getToken();
@@ -170,7 +181,6 @@ function buildUrl(path, params) {
   if (ME_CANONICALS.includes(normalized)) {
     path = import.meta?.env?.VITE_API_ME_PATH || "/api/auth/me";
   }
-
   const url = new URL(toAbsolutePath(path), API_URL);
   if (params && typeof params === "object") {
     Object.entries(params).forEach(([k, v]) => {
@@ -189,6 +199,45 @@ function buildUrl(path, params) {
 const AUTH_FREE_RX = /^\/(?:api\/)?(?:login|auth\/login|auth\/refresh|health(?:\/.*)?|public(?:\/.*)?)$/i;
 
 /** =========================
+ *  Logout/refresh helpers
+ *  ========================= */
+function forceLogout(reason = "expired") {
+  try { clearAuthToken(); } catch {}
+  try { window.dispatchEvent(new CustomEvent("mimo:logout", { detail: { reason } })); } catch {}
+}
+
+async function tryRefreshToken() {
+  try {
+    const url = buildUrl("/auth/refresh");
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return false;
+
+    // servidor pode mandar novo token por body ou header
+    const newHeader = res.headers.get("X-Access-Token") || res.headers.get("X-New-Token");
+    let data = {};
+    try { data = await res.json(); } catch {}
+    const next =
+      newHeader ||
+      data?.accessToken || data?.token || data?.jwt || data?.id_token || data?.Authorization;
+
+    if (next) {
+      setAuthToken(next);
+      if (DEBUG) console.log("[http.js] refresh OK");
+      return true;
+    }
+    if (DEBUG) console.warn("[http.js] refresh sem token");
+    return false;
+  } catch (e) {
+    if (DEBUG) console.warn("[http.js] refresh falhou:", e?.message);
+    return false;
+  }
+}
+
+/** =========================
  *  Fetch wrapper
  *  ========================= */
 export async function api(
@@ -202,6 +251,7 @@ export async function api(
     headers,
     timeout = 30000,
     auth = true,
+    retry = true, // 🔁 limita retry (refresh) a 1x
   } = {}
 ) {
   const url = buildUrl(path, params);
@@ -251,43 +301,66 @@ export async function api(
 
   let res = await doFetch(url);
 
-  // Em dev: se 401 e tínhamos Authorization, tenta retry com ?token=
-  const isDev = typeof import.meta !== "undefined" && import.meta?.env?.MODE !== "production";
-  if (res.status === 401 && isDev && shouldSendAuth && token) {
-    try {
-      const retryUrl = new URL(url.toString());
-      if (!retryUrl.searchParams.has("token")) {
-        retryUrl.searchParams.set("token", token);
-        if (DEBUG) console.warn("[http.js] 401 → retry com ?token=…");
-        res = await doFetch(retryUrl);
-      }
-    } catch {}
+  // server pode forçar logout via header
+  if (res.headers.get("X-Force-Logout") === "1") {
+    forceLogout("server_forced");
   }
 
-  const ct = res.headers.get("content-type") || "";
+  // token expirado? tenta refresh + retry 1x
+  if ([401, 419, 440].includes(res.status)) {
+    if (retry && shouldSendAuth) {
+      const ok = await tryRefreshToken();
+      if (ok) {
+        // refaz a chamada uma única vez
+        return api(path, { method, params, body: payload, json, data, headers, timeout, auth, retry: false });
+      }
+    }
+    // Em dev, último recurso: retry com ?token=...
+    const isDev = typeof import.meta !== "undefined" && import.meta?.env?.MODE !== "production";
+    if (isDev && shouldSendAuth && token) {
+      try {
+        const retryUrl = new URL(url.toString());
+        if (!retryUrl.searchParams.has("token")) {
+          retryUrl.searchParams.set("token", token);
+          if (DEBUG) console.warn("[http.js] 401 → retry com ?token=…");
+          res = await doFetch(retryUrl);
+          if (res.ok) return parseResponse(res);
+        }
+      } catch {}
+    }
+    forceLogout("expired");
+    return throwHttpError(res, url);
+  }
 
-  if (!res.ok) {
+  return parseResponse(res);
+
+  /* ==== helpers locais do fetch wrapper ==== */
+  async function parseResponse(res) {
+    const ct = res.headers.get("content-type") || "";
+    if (!res.ok) return throwHttpError(res, url);
+    if (res.status === 204) return {};
+    if (ct.includes("application/json") || ct.includes("application/problem+json")) return res.json();
+    const txt = await res.text();
+    try { return txt ? JSON.parse(txt) : {}; }
+    catch { return txt; }
+  }
+
+  async function throwHttpError(res, urlObj) {
+    const ct = res.headers.get("content-type") || "";
     let data = null;
     try {
       const text = await res.text();
-      try { data = text ? JSON.parse(text) : null; }
+      try { data = text && ct.includes("application/json") ? JSON.parse(text) : (text || null); }
       catch { data = text ? { message: text } : null; }
     } catch {}
-    const msg = data?.message || data?.title || `HTTP ${res.status}`;
+    const msg = (data && (data.message || data.title)) || `HTTP ${res.status}`;
     const err = new Error(msg);
     err.status = res.status;
     err.data = data || undefined;
-    err.url = url.toString();
+    err.url = urlObj.toString();
     if (DEBUG) console.error("[http.js] ✖ erro:", err);
     throw err;
   }
-
-  if (res.status === 204) return {};
-  if (ct.includes("application/json") || ct.includes("application/problem+json")) return res.json();
-
-  const txt = await res.text();
-  try { return txt ? JSON.parse(txt) : {}; }
-  catch { return txt; }
 }
 
 /** =========================
@@ -323,11 +396,42 @@ httpClient.interceptors.request.use((config) => {
   }
 });
 
-/** Interceptor response: normaliza erros */
+/** Interceptor response: refresh + retry + logout */
 httpClient.interceptors.response.use(
-  (resp) => resp,
-  (error) => {
+  (resp) => {
+    if (resp?.headers && (resp.headers["x-force-logout"] === "1" || resp.headers["X-Force-Logout"] === "1")) {
+      forceLogout("server_forced");
+    }
+    return resp;
+  },
+  async (error) => {
     const status = error?.response?.status;
+    const cfg = error?.config || {};
+
+    // força logout por header
+    const xfl = error?.response?.headers?.["x-force-logout"] === "1" || error?.response?.headers?.["X-Force-Logout"] === "1";
+    if (xfl) {
+      forceLogout("server_forced");
+    }
+
+    // tenta refresh somente 1x
+    if ([401, 419, 440].includes(status) && !cfg._retry) {
+      cfg._retry = true;
+      const ok = await tryRefreshToken();
+      if (ok) {
+        // injeta novo Authorization e refaz
+        const token = getToken();
+        cfg.headers = { ...(cfg.headers || {}) };
+        if (token) cfg.headers.Authorization = `Bearer ${token}`;
+        try {
+          return await httpClient.request(cfg);
+        } catch (e) {
+          // se ainda falhar, cai no fluxo padrão
+        }
+      }
+      forceLogout("expired");
+    }
+
     const data = error?.response?.data;
     const msg =
       (data && (data.message || data.title)) ||

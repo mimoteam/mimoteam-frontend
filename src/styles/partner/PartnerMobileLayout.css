@@ -1,0 +1,145 @@
+/* =======================================================
+   PartnerMobileLayout.css (usa PartnerTokens.css)
+   Escopo: .pml-*
+   ======================================================= */
+/* … resto do arquivo permanece igual ao enviado … */
+
+/* ===== Sheet “More” ===== */
+@keyframes pml-pop{ from{ transform: translateY(10px); opacity:.6; } to{ transform:none; opacity:1; } }
+.sheet-grid{ display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:10px; }
+.sheet-item{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  background: var(--fourth-color);
+  border:1px solid var(--pm-brd); border-radius:14px; padding: 12px 8px;
+  color:#334155; font-weight:800; font-size:12px; cursor:pointer;
+  transition: transform .08s ease, background .15s ease, box-shadow .15s ease;
+}
+.sheet-item .ic{
+  width:34px; height:34px; display:grid; place-items:center;
+  border-radius:10px; background:#fff; border:1px solid var(--pm-brd);
+}
+.sheet-item:hover{ transform: translateY(-1px); background:#eaf6ff; box-shadow: 0 10px 22px rgba(2,6,23,.06); }
+
+/* ➕ estilo “danger” para o Sign out */
+.sheet-item.danger{
+  background:#fff5f5;
+  border-color:#fecaca;
+  color:#b91c1c;
+}
+.sheet-item.danger .ic{
+  background:#fff; border-color:#fecaca; color:#b91c1c;
+}
+.sheet-item.danger:hover{
+  background:#ffe4e6;
+  box-shadow: 0 10px 22px rgba(185,28,28,.15);
+}
+
+/* @media … permanece igual */
+@media (max-width: 420px){
+  .sheet-grid{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+}
+
+.pml-wrap{
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--pm-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== Header (azul claro) ===== */
+.pml-header{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding: 12px 16px;
+  background: var(--pm-header-bg);
+  border-bottom: 1px solid var(--pm-brd);
+  backdrop-filter: blur(8px);
+}
+.pml-header .brand{
+  font-weight:900; letter-spacing:.5px; color:#fff;
+  background: var(--first-color);
+  border:1px solid color-mix(in oklab, var(--first-color) 55%, white 45%);
+  box-shadow: 0 6px 14px rgba(46,148,185,.28);
+  padding:6px 10px; border-radius: 14px;
+}
+.pml-header .title{ margin:0; font-size:18px; font-weight:900; color:#334155; }
+.pml-header .spacer{ inline-size:36px; }
+
+/* ===== Main ===== */
+.pml-main{ flex:1 1 auto; min-height:0; padding: 12px; }
+
+/* ===== Bottom Tabbar (compacto + moderno) ===== */
+.pml-tabbar{
+  position: sticky; bottom: 0; inset-inline: 0; z-index: 10;
+  display:grid; grid-template-columns: repeat(4, 1fr); gap:8px;
+  padding: 10px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  background: transparent;
+}
+.pml-tabbar .tab{
+  -webkit-tap-highlight-color: transparent;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  height: 60px;               /* menor que antes */
+  font-size: 12px; font-weight:800; text-decoration:none;
+  color:#6b7280;
+  background: var(--pm-tabbar-bg);
+  border:1px solid var(--pm-brd);
+  border-radius:16px;
+  box-shadow: 0 6px 14px rgba(0,0,0,.06), inset 0 1px 0 #fff;
+  transition: transform .08s ease, box-shadow .16s ease, background .16s ease, color .16s ease;
+}
+.pml-tabbar .tab:hover{ transform: translateY(-1px); }
+.pml-tabbar .tab.active,
+.pml-tabbar .tab[aria-current="page"]{
+  color:#fff;
+  background: var(--pm-accent);
+  border-color: transparent;
+  box-shadow: 0 10px 22px color-mix(in oklab, var(--pm-accent) 34%, transparent);
+}
+.pml-tabbar .tab span{ line-height:1; }
+.pml-tabbar .more-btn{ position:relative; overflow:hidden; }
+.pml-tabbar .more-btn::after{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background: radial-gradient(500px 70px at 50% 120%, rgba(255,255,255,.45), transparent 60%);
+}
+
+/* ===== Sheet “More” ===== */
+.pml-sheet-backdrop{
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(15,23,42,.35); backdrop-filter: blur(2px);
+}
+.pml-sheet{
+  position: fixed; left:0; right:0; bottom:0; z-index: 45;
+  background:#fff; border-top:1px solid var(--pm-brd);
+  border-top-left-radius:18px; border-top-right-radius:18px;
+  padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 28px rgba(46,148,185,.18);
+  animation: pml-pop .18s ease-out;
+}
+@keyframes pml-pop{ from{ transform: translateY(10px); opacity:.6; } to{ transform:none; opacity:1; } }
+.sheet-head{
+  display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;
+}
+.sheet-head strong{ font-size:14px; color:#334155; }
+.icon-btn{
+  width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid var(--pm-brd); background:#fff; border-radius:10px; cursor:pointer;
+}
+.sheet-grid{ display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:10px; }
+.sheet-item{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  background: var(--fourth-color);
+  border:1px solid var(--pm-brd); border-radius:14px; padding: 12px 8px;
+  color:#334155; font-weight:800; font-size:12px; cursor:pointer;
+  transition: transform .08s ease, background .15s ease, box-shadow .15s ease;
+}
+.sheet-item .ic{
+  width:34px; height:34px; display:grid; place-items:center;
+  border-radius:10px; background:#fff; border:1px solid var(--pm-brd);
+}
+.sheet-item:hover{ transform: translateY(-1px); background:#eaf6ff; box-shadow: 0 10px 22px rgba(2,6,23,.06); }
+
+@media (max-width: 420px){
+  .sheet-grid{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+}

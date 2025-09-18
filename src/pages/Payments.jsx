@@ -9,7 +9,7 @@ import {
   DollarSign as DollarIco
 } from 'lucide-react';
 import { api } from '../api/http';
-import '../styles/Payments.css';
+import '../styles/pages/Payments.css';
 import { getServicesPayStatus } from "../api/payments";
 
 const DEBUG_PAYSTATUS = false;
@@ -700,44 +700,48 @@ const Payments = () => {
       </div>
 
       {/* FILTERS + ACTIONS (SERVICES) */}
-      <div className="filters-card">
-        <div className="filters-row" style={{ flexWrap: 'wrap' }}>
-          <div className="filter">
-            <label><Users size={13}/> Partner</label>
-            <select
-              value={selectedPartner}
-              onChange={(e) => { setSelectedPartner(e.target.value); setSelectedServiceIds([]); }}
-            >
-              <option value="">All</option>
-              {partnersList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <div className="filter">
-            <label><Calendar size={13}/> Date from</label>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-          </div>
-          <div className="filter">
-            <label><Calendar size={13}/> Date to</label>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-          </div>
-          <div className="filter" style={{ minWidth: 240 }}>
-            <label><Filter size={13}/> Search client</label>
-            <input type="text" placeholder="Type client name..." value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
+   <div className="filters-card">
+  <div className="filters-row">{/* ⛔️ sem inline style aqui */}
+    <div className="filter">
+      <label><Users size={13}/> Partner</label>
+      <select
+        value={selectedPartner}
+        onChange={(e) => { setSelectedPartner(e.target.value); setSelectedServiceIds([]); }}
+      >
+        <option value="">All</option>
+        {partnersList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+    </div>
 
-          <div style={{ display:'flex', gap:8, alignItems:'flex-end', marginLeft: 'auto' }}>
-            <button className="btn btn--outline btn--sm" onClick={refreshAll} title="Refresh data">
-              <RefreshCw size={16}/> Refresh
-            </button>
-            <button
-              className="btn btn--outline btn--sm"
-              onClick={() => { setSelectedPartner(''); setDateFrom(''); setDateTo(''); setSearch(''); setSelectedServiceIds([]); }}
-              title="Clear filters"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
+    <div className="filter">
+      <label><Calendar size={13}/> Date from</label>
+      <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+    </div>
+
+    <div className="filter">
+      <label><Calendar size={13}/> Date to</label>
+      <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+    </div>
+
+    <div className="filter filter--search">
+      <label><Filter size={13}/> Search client</label>
+      <input type="text" placeholder="Type client name..." value={search} onChange={e => setSearch(e.target.value)} />
+    </div>
+
+    {/* Grupo de ações alinhado à direita */}
+    <div className="filters-actions">
+      <button className="btn btn--outline btn--sm" onClick={refreshAll} title="Refresh data">
+        <RefreshCw size={16}/> Refresh
+      </button>
+      <button
+        className="btn btn--outline btn--sm"
+        onClick={() => { setSelectedPartner(''); setDateFrom(''); setDateTo(''); setSearch(''); setSelectedServiceIds([]); }}
+        title="Clear filters"
+      >
+        Clear
+      </button>
+    </div>
+  </div>
 
         <div className="actions-row" style={{ flexWrap: 'wrap' }}>
           <div className="total-pill">

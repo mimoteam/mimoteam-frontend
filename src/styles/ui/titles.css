@@ -1,0 +1,28 @@
+/* Mantém gradiente no título do header, sem “caixa” */
+.app-header .page-info :is(.glass-card,.neumorphic,.dashboard-card){
+  background:transparent !important; border:0 !important; box-shadow:none !important;
+  outline:0 !important; padding:0 !important; margin:0 !important; border-radius:0 !important;
+}
+.app-header .page-info h1{
+  background: linear-gradient(135deg, var(--brand-400) 0%, var(--brand-500) 100%) !important;
+  -webkit-background-clip:text !important; background-clip:text !important; -webkit-text-fill-color:transparent !important;
+  text-shadow:none !important; border:0 !important; box-shadow:none !important; padding:.1rem 0 !important;
+}
+
+/* Utilitários de gradiente */
+.title-gradient{ background: linear-gradient(90deg, var(--brand-700), var(--brand-400)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
+.title-gradient--dashboard{ background: linear-gradient(90deg, #1E6ECB, #90D5FF); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
+.title-gradient--paid{ background: linear-gradient(90deg, #0ea5e9, #22c55e); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
+.title-gradient--awaiting{ background: linear-gradient(90deg, #1E6ECB, #f59e0b); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
+
+/* Aplicação automática em Admin/Finance */
+.app-layout:not(.partner-mobile) :is(.page-content,.finance-page) :is(h1,h2,h3){
+  font-weight:900;
+  background: linear-gradient(90deg, var(--brand-700), var(--brand-400));
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; margin:0;
+}
+/* Cabeçalhos de tabela permanecem sólidos */
+.page-content .thead .th{
+  background:none !important; -webkit-background-clip:initial !important; background-clip:initial !important;
+  -webkit-text-fill-color:initial !important; color:var(--muted) !important;
+}

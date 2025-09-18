@@ -1,206 +1,50 @@
-/* ==================== TOKENS BASE (layout claro) ==================== */
+/* === Layout base (desktop-first p/ Admin e Finance) === */
 :root{
-  --pm-bg:#F7F9FC;
-  --pm-card:#FFFFFF;
-  --pm-ink:#0F172A;
-  --pm-muted:#64748B;
-  --pm-line:#E5EAF1;
-  --pm-blue-50:#F0F7FF;
-  --pm-blue-100:#E8F1FF;
-  --pm-blue-200:#D7E6FF;
-  --pm-blue-600:#2563EB;
-  --pm-shadow:0 8px 28px rgba(15,23,42,.08);
+  --sb-w-open: 289px;
+  --sb-w-closed: 95px;
 }
 
-/* ========= estrutura principal ========= */
-.app-layout{ background:var(--pm-bg); }
+.app-layout{
+  display:flex;
+  height:100vh;
+  /* não bloquear menus/tooltip/popovers */
+  overflow: visible;
+  background: var(--bg);
+}
+
+.main-content{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  margin-left: var(--sb-w-open);
+  transition: margin-left .28s ease;
+}
+.main-content.sidebar-closed{ margin-left: var(--sb-w-closed); }
+
+.page-content{
+  position: relative;
+  z-index: 10;
+  flex:1;
+  padding:24px;
+  min-width:0;
+  min-height:0;
+  background: var(--bg);
+  overflow-y:auto;
+  overflow-x:auto;
+}
+
+/* camadas previsíveis */
+.app-header{ position: sticky; top:0; z-index:30; }
+.sidebar{ z-index:20; }
+.backdrop{ position:fixed; inset:0; z-index:40; }
+
+@media (max-width: 768px){
+  .main-content{ margin-left:0; }
+  .main-content.sidebar-open{ margin-left:0; }
+  .page-content{ padding:16px; }
+}
+
 .partner-mobile .main-content{ margin-left:0 !important; }
-.page-content{ padding:16px; }
-@media (min-width:1025px){ .page-content{ padding:24px; } }
 
-/* ========= header (admin intacto) ========= */
-.app-header{
-  height:72px; padding:0 16px; background:#fff; border-bottom:1px solid var(--pm-line);
-  display:flex; align-items:center; justify-content:space-between;
-}
-.page-info .page-title{
-  font-size:22px; font-weight:800; letter-spacing:-.2px; color:#0F172A; margin:0;
-}
-.page-info .page-subtitle{
-  font-size:13px; color:var(--pm-muted); margin-top:8px; line-height:1.4;
-}
-
-/* ==================== PARTNER MOBILE “CHROME” UNIFICADO ==================== */
-/* Um único tema para header + tabbar, sem afetar admin */
-.partner-mobile{
-  --pw-chrome: linear-gradient(180deg, #0b2140 0%, #112e54 100%);
-  --pw-chrome-bd: rgba(255,255,255,.12);
-  --pw-chrome-fg: #fff;
-  --pw-chrome-fg-soft: rgba(255,255,255,.88);
-}
-
-/* header escuro (estilo carteira) */
-.app-header.partner-header{
-  background: var(--pw-chrome);
-  color:#fff;
-  border-bottom:1px solid rgba(255,255,255,.08);
-  box-shadow: 0 2px 10px rgba(2,6,23,.25);
-}
-.app-header.partner-header .page-title{
-  color:#fff !important; -webkit-text-fill-color:currentColor !important;
-}
-.app-header.partner-header .page-subtitle{ color:var(--pw-chrome-fg-soft); }
-
-/* ==================== HEADER MOBILE COMPACTO + GRID ==================== */
-/* não mexe no admin — só quando tiver .partner-mobile */
-.partner-mobile .app-header.partner-header{
-  /* compacta e vira grid para alinhar o kebab na mesma linha do userline */
-  padding:10px 12px;
-  min-height:56px;
-  border-radius:16px;
-  border:1px solid var(--pw-chrome-bd);
-  display:grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas:
-    "title kebab"
-    "user  kebab";
-  align-items:center;
-  gap:4px 10px;
-}
-
-/* a page-info vira “conteúdo” do grid */
-.partner-mobile .app-header.partner-header .page-info{ display:contents; }
-.partner-mobile .app-header.partner-header .page-title{ 
-  grid-area:title; 
-  font-size:18px; line-height:1.15; margin:0; color:#fff;
-}
-.partner-mobile .app-header.partner-header .page-subtitle{ display:none; } /* opcional */
-.partner-mobile .app-header.partner-header .page-userline{
-  grid-area:user; 
-  margin:0; color:var(--pw-chrome-fg-soft); font-weight:500;
-}
-
-/* o bloco da direita (kebab) ocupa a coluna “kebab” */
-.partner-mobile .app-header.partner-header .header-right{ grid-area:kebab; margin:0; }
-
-/* esconder peças pesadas no partner mobile */
-.partner-mobile .header-clock,
-.partner-mobile .user-profile,
-.partner-mobile .header-btn,
-.partner-mobile .logout-btn { display:none !important; }
-
-/* ===== kebab (3 pontos) ===== */
-.header-kebab{ display:none; }
-.partner-mobile .header-kebab{
-  display:inline-flex; align-items:center; justify-content:center;
-  width:40px; height:40px; border-radius:10px;
-  border:1px solid var(--pw-chrome-bd);
-  background: rgba(255,255,255,.10); color:#fff; padding:0;
-}
-.kebab-wrap{ position:relative; }
-.kebab-menu{
-  position:absolute; right:0; top:calc(100% + 8px); z-index:50;
-  background:#0F172A; color:#fff;
-  border:1px solid rgba(255,255,255,.12); border-radius:12px; min-width:180px;
-  box-shadow:var(--pm-shadow); padding:6px;
-}
-.kebab-item{
-  width:100%; display:flex; align-items:center; gap:8px;
-  padding:10px 12px; border-radius:10px; border:0; background:transparent; cursor:pointer;
-  color:#E2E8F0; font-weight:700; font-size:14px;
-}
-.kebab-item:hover{ background:rgba(255,255,255,.06); }
-.kebab-item.danger{ color:#FCA5A5; }
-
-/* ==================== TABBAR (mesmo chrome do header) ==================== */
-.mobile-tabbar{
-  position:fixed; left:0; right:0; bottom:0; z-index:1100;
-  height:64px; padding:8px 10px calc(8px + env(safe-area-inset-bottom));
-  display:flex; align-items:center; justify-content:space-around; gap:6px;
-  background:rgba(255,255,255,.92); border-top:1px solid #E2E8F0;
-  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
-}
-.partner-mobile .mobile-tabbar{
-  background: var(--pw-chrome) !important;
-  border-top-color: var(--pw-chrome-bd) !important;
-}
-.mtab{
-  flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-  height:100%; gap:4px; border:0; background:transparent; border-radius:12px; cursor:pointer;
-  color:#64748B; font-size:11px; font-weight:700; letter-spacing:.2px;
-}
-.mtab.active{ color:#1E40AF; background:rgba(144,213,255,.16); }
-.partner-mobile .mtab{ color:#B6C2CF; }
-.partner-mobile .mtab.active{ color:#FFFFFF; background:rgba(144,213,255,.16); }
-
-/* evitar conteúdo ficar atrás da tabbar */
-.partner-mobile .page-content{ padding-bottom:calc(72px + env(safe-area-inset-bottom)); }
-
-/* ========= sidebar/drawer (transições/overlay, sem afetar admin) ========= */
-.sidebar{ transition:transform .28s ease, width .28s ease; }
-.main-content{ transition: margin-left .28s ease; }
-.backdrop{
-  position:fixed; inset:0; background:rgba(2,6,23,0.45);
-  backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); z-index:900;
-}
-
-/* utilitário */
-.page-title{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
-/* --- Perfil: isolar pilha e priorizar inputs de senha --- */
-.page-profile .profile-card { position: relative; isolation: isolate; }
-.page-profile .profile-rows,
-.page-profile .profile-section,
-.page-profile .profile-row,
-.page-profile .profile-edit,
-.page-profile .profile-actions { position: relative; z-index: 0; }
-.page-profile .profile-row input,
-.page-profile .profile-row button,
-.page-profile .profile-actions .btn { position: relative; z-index: 3; pointer-events: auto; }
-.page-profile .profile-upload { position: relative; overflow: hidden; z-index: 1; }
-.page-profile .profile-upload input[type="file"]{
-  position:absolute; inset:0; opacity:0; cursor:pointer; z-index:1;
-}
-
-/* ===== Variante opcional para tablets: mantém userline + kebab em 1 linha ===== */
-@media (min-width:520px) and (max-width:1024px){
-  .partner-mobile .app-header.partner-header{
-    grid-template-columns: 1fr auto;
-    grid-template-areas: "title kebab" "user kebab";
-    padding:12px 16px;
-  }
-  .partner-mobile .app-header.partner-header .page-title{ font-size:20px; }
-}
-
-/* ============================================================
-   FIX: Native date/month picker fechando imediatamente
-   ------------------------------------------------------------
-   - Restaura aparência nativa (evita bugs de WebKit/Chrome).
-   - Garante prioridade de clique/empilhamento nos inputs do
-     perfil, para que listeners globais não derrubem o foco.
-   ============================================================ */
-.page-profile input[type="date"],
-.page-profile input[type="month"]{
-  -webkit-appearance: auto !important;
-  appearance: auto !important;
-  position: relative;   /* cria nova camada */
-  z-index: 5;           /* acima de decorações locais */
-  pointer-events: auto; /* garante que o clique é do input */
-  background: #fff;     /* evita blends estranhos */
-  color: var(--pm-ink);
-  border: 1px solid var(--pm-line);
-  border-radius: 8px;
-  height: 40px;
-  padding: 0 12px;
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Indicador do calendário visível e clicável */
-.page-profile input[type="date"]::-webkit-calendar-picker-indicator,
-.page-profile input[type="month"]::-webkit-calendar-picker-indicator{
-  opacity: .95;
-  cursor: pointer;
-  margin-inline-end: -2px;
-  filter: invert(37%) sepia(66%) saturate(954%) hue-rotate(184deg) brightness(96%) contrast(93%);
-}

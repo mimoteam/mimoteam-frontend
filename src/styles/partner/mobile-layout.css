@@ -1,0 +1,28 @@
+/* Escopo: .partner-mobile — não vaza para Admin/Finance */
+.partner-mobile, .partner-mobile * { box-sizing: border-box; }
+
+.partner-mobile {
+  --pm-bg-a: #0b1220;
+  --pm-bg-b: #101e34;
+  --pm-card: rgba(255,255,255,.06);
+  --pm-brd: rgba(255,255,255,.14);
+  --pm-ink: #e7eefc;
+  --pm-accent: #50b4ff;
+
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 50% -200px, #1a2a45 0%, transparent 70%),
+              linear-gradient(180deg, var(--pm-bg-a), var(--pm-bg-b));
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+/* conteúdo central com espaço reservado para a tab bar */
+.pm-page-content{
+  padding: 14px 12px 88px; /* bottom >= altura da tabbar */
+  overflow: auto;
+}
+
+/* quando algum formulário popover ficar colado no bottom em iOS */
+@supports (-webkit-touch-callout: none) {
+  .pm-page-content{ padding-bottom: 100px; }
+}

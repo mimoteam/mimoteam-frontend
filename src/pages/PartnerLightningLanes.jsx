@@ -1,11 +1,10 @@
-// src/components/PartnerLightningLanes.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Upload, Plus, Save, Trash2, Image as ImageIcon,
   CheckCircle2, AlertCircle, Calendar as CalendarIcon, Users,
   ChevronRight, ChevronDown
 } from "lucide-react";
-import "../styles/PartnerLL.css";
+import "../styles/pages/PartnerLL.css";
 import {
   createLane,
   listLanes,
@@ -48,7 +47,7 @@ function emptyRow(prefilledClient = "") {
     amount: "",
     paymentMethod: "",
     cardLast4: "",
-    observation: "",     // campo de observação
+    observation: "",
     files: [],
     previews: [],
     message: "",
@@ -104,7 +103,6 @@ export default function PartnerLightningLanes() {
   // Sempre iniciar limpo com a data de hoje
   useEffect(() => {
     clearForm();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -113,10 +111,8 @@ export default function PartnerLightningLanes() {
     return () => clearTimeout(t);
   }, [msg]);
 
-  // Listagem SEM filtro de mês; ordenação vem do backend
   const refresh = async (opts = {}) => {
     const nextPage = opts.page ?? page;
-
     setLoadingList(true);
     try {
       const { items, total: t = 0, page: cur = nextPage } =
@@ -142,16 +138,13 @@ export default function PartnerLightningLanes() {
 
   useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
 
-  /* ---------- Helpers ---------- */
   function clearForm() {
-    // revoga blobs de preview
     rows.forEach(r => (r.previews || []).forEach(u => URL.revokeObjectURL(u)));
     setClientOnce("");
     setVisitDate(ymdToday());
     setRows([emptyRow("")]);
   }
 
-  /* ---------- Handlers ---------- */
   function updateRow(idx, patch) {
     setRows(prev => {
       const next = prev.slice();
@@ -213,8 +206,7 @@ export default function PartnerLightningLanes() {
     }
 
     if (savedCount > 0) {
-      // limpa imediatamente após salvar
-      clearForm();                   // <- (1) form realmente zera
+      clearForm();
       setOpen(new Set());
       setMsg(`${savedCount} item(s) saved.`);
       setPage(1);
@@ -251,7 +243,6 @@ export default function PartnerLightningLanes() {
   const goPrev = () => { if (page > 1) refresh({ page: page - 1 }); };
   const goNext = () => { if (page < pages) refresh({ page: page + 1 }); };
 
-  /* ---------- UI ---------- */
   return (
     <div className="page-ll">
       {/* ====== Form principal ====== */}
@@ -455,7 +446,6 @@ export default function PartnerLightningLanes() {
 
                     {opened && (
                       <div id={`lane-${it._id}`} className="ll-item-details">
-                        {/* (2) Observation só quando expande */}
                         {it.observation && (
                           <div className="ll-empty" style={{ marginTop: 4 }}>
                             <strong>Note:</strong>&nbsp;{it.observation}
@@ -468,7 +458,6 @@ export default function PartnerLightningLanes() {
                             const src = toAbsoluteUrl(u) + bust(it.updatedAt);
                             return (
                               <div className="ll-receipt" key={u}>
-                                {/* (3) clique para ampliar */}
                                 <img
                                   src={src}
                                   alt="receipt"
@@ -511,7 +500,7 @@ export default function PartnerLightningLanes() {
         )}
       </div>
 
-      {/* ===== Lightbox simples para ampliar imagem ===== */}
+      {/* ===== Lightbox ===== */}
       {previewUrl && (
         <div
           onClick={() => setPreviewUrl(null)}

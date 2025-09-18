@@ -8,7 +8,7 @@ import {
   updateUserApi,
   deleteUserApi,
 } from "../api/users"; // << caminho correto
-
+import "../styles/pages/Users.css"; // << crie este arquivo para estilos específicos
 const ROLES = [
   { id: "admin", label: "Admin" },
   { id: "partner", label: "Partner" },

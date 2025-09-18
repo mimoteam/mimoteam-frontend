@@ -1,0 +1,31 @@
+/* Bottom tab bar — só ativa dentro de .partner-mobile */
+.pm-tabbar{
+  position: fixed; left: 10px; right: 10px; bottom: 12px; z-index: 25;
+  display: grid; grid-auto-flow: column; gap: 10px;
+  background: rgba(12,21,36,.76);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 8px 26px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+  backdrop-filter: blur(12px);
+}
+
+.pm-tab{
+  display:flex; align-items:center; justify-content:center; gap: 8px;
+  min-width: 56px; height: 44px; padding: 0 12px;
+  color: #e7eefc; text-decoration: none; font-weight: 700; font-size: 13px;
+  border-radius: 12px; border: 1px solid transparent;
+  background: transparent;
+}
+.pm-tab__icon{ font-size: 16px; line-height: 1; }
+.pm-tab__label{ display:none; }
+.pm-tab.is-active{
+  background: linear-gradient(180deg, rgba(92,180,255,.18), rgba(92,180,255,.10));
+  border-color: rgba(92,180,255,.32);
+  box-shadow: 0 6px 16px rgba(92,180,255,.20);
+}
+
+/* mostrar labels em telas um pouco mais largas */
+@media (min-width: 420px){
+  .pm-tab__label{ display: inline; }
+}

@@ -1,0 +1,104 @@
+/* Escopo total: somente dentro de .finance-profile */
+.finance-profile{
+  --panel-grad: linear-gradient(135deg, #f5f8fb, #f6f6f6);
+  --card-bg:    linear-gradient(180deg, #FFFFFF 0%, #F6FAFF 100%);
+  --line:       #E2E8F0;
+  --ink:        #0F172A;
+  --muted:      #64748B;
+}
+
+.finance-profile.page-profile{
+  padding: 0; /* neutraliza estilos genéricos de outras páginas */
+}
+
+/* Card */
+.finance-profile .p-card.profile-card{
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(2,8,23,.10);
+  overflow: hidden;
+}
+.finance-profile .p-card.profile-card::before{
+  content:"";
+  display:block;
+  height: 148px;
+  background: var(--panel-grad);
+}
+
+/* Header interno (avatar + ações) */
+.finance-profile .profile-header{
+  margin-top: -110px;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 16px;
+  align-items: end;
+  padding: 0 18px 6px;
+}
+.finance-profile .profile-avatar{
+  width: 124px;
+  height: 124px;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  box-shadow: 0 8px 22px rgba(2,8,23,.25);
+  overflow: hidden;
+  background: #f1f5f9;
+}
+.finance-profile .profile-avatar img{ width: 100%; height: 100%; object-fit: cover; }
+.finance-profile .profile-avatar-fallback{
+  width: 100%; height: 100%;
+  display:flex; align-items:center; justify-content:center;
+  font: 800 42px/1 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+  color:#334155; background:#e2e8f0;
+}
+.finance-profile .profile-avatar-actions{
+  display:flex; align-items:center; gap:10px; padding-bottom:6px;
+}
+.finance-profile .profile-upload input{ display:none; }
+
+/* Linhas */
+.finance-profile .profile-rows{
+  padding: 12px 18px 18px;
+  display:grid; gap:10px;
+}
+.finance-profile .profile-row{
+  display:grid;
+  grid-template-columns: 220px 1fr;
+  gap: 12px;
+  align-items:center;
+  background:#fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.finance-profile .pc-label{ color: var(--muted); font-weight: 700; }
+.finance-profile .pc-value{ color: var(--ink);   font-weight: 700; }
+
+/* Campo editável */
+.finance-profile .profile-edit{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.finance-profile .profile-input{
+  appearance:none;
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px 12px;
+  min-width: 220px;
+  background:#fff;
+  color: var(--ink);
+  font-weight:600;
+}
+.finance-profile .profile-input:focus{
+  outline:none;
+  border-color:#5BA7F7;
+  box-shadow:0 0 0 3px rgba(144,213,255,.45);
+}
+.finance-profile .profile-readonly{ font-weight:800; color:#0F172A; }
+.finance-profile .profile-hint{ font-size:12px; color: var(--muted); }
+
+/* NÃO sobrescrever variantes globais; só ajustes finos permitidos */
+.finance-profile .btn{ font-weight:800; }   /* opcional */
+.finance-profile .btn--sm{ padding: 8px 12px; }
+
+/* Desktop wide */
+@media (min-width: 1400px){
+  .finance-profile .profile-row{ grid-template-columns: 260px 1fr; }
+}

@@ -1,0 +1,137 @@
+/* ===== SIDEBAR (base) ===== */
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100vh;
+  width: var(--sb-w-open);            /* usa as mesmas variáveis do Layout.css */
+  background: var(--surface-1);
+  border-right: 1px solid var(--line);
+  transition: width 0.28s ease, transform 0.28s ease, box-shadow .2s;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.05);
+}
+
+.sidebar.sidebar-closed { width: var(--sb-w-closed); }
+
+/* header da sidebar */
+.sidebar-header {
+  padding: 26px 22px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-1);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.sidebar-logo { display: flex; align-items: center; gap: 8px; }
+.logo-text{
+  font-size: 24px;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--brand-400) 0%, var(--brand-500) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0; letter-spacing: -0.5px;
+}
+.logo-subtitle{ font-size: 16px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; }
+
+.sidebar-toggle{
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted);
+  cursor: pointer; transition: all 0.2s ease;
+}
+.sidebar-toggle:hover{
+  background: var(--brand-400);
+  color: #fff; border-color: var(--brand-400);
+  transform: scale(1.05);
+}
+
+/* navegação */
+.sidebar-nav {
+  flex: 1;
+  padding: 20px 0;
+  overflow-y: auto;
+  display: flex;                 /* coluna padrão */
+  flex-direction: column;
+}
+
+/* ⚠️ Importante: NÃO reordenar via CSS.
+   A ordem vem do React (array + .sort + style={{order}}).
+   Se em algum momento existiu um bloco com data-key + order, REMOVER. */
+
+.nav-item{
+  display: flex; align-items: center; justify-content: flex-start;
+  padding: 16px 12px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  border: none; background: none; width: 100%;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  margin: 2px 0;
+}
+
+.nav-item:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-left-color: #CBD5E1;
+}
+
+.nav-item-active{
+  background: linear-gradient(135deg, rgba(144, 213, 255, 0.15) 0%, rgba(91, 167, 247, 0.1) 100%);
+  color: var(--brand-500);
+  border-left-color: var(--brand-400);
+  font-weight: 600;
+}
+.nav-item-active .nav-icon { color: var(--brand-500); }
+
+.nav-icon{
+  width: 40px; min-width: 40px;
+  display: flex; align-items: center; justify-content: center;
+  color: inherit;
+}
+
+.nav-content{
+  margin-left: 10px;
+  display: flex; flex-direction: column;
+  align-items: flex-start; text-align: left;
+}
+.nav-label{ font-size: 15px; font-weight: 600; line-height: 1.2; color: inherit; }
+.nav-description{ font-size: 12px; opacity: .7; margin-top: 2px; color: inherit; }
+
+/* Estado fechado: esconde textos e centraliza ícones */
+.sidebar.sidebar-closed .nav-content{ display: none; }
+.sidebar.sidebar-closed .nav-item{ justify-content: center; }
+.sidebar.sidebar-closed .nav-icon{ margin: 0; }
+
+/* rodapé */
+.sidebar-footer{ padding: 20px; border-top: 1px solid var(--line); background: var(--surface-1); }
+.sidebar-footer-content{ text-align: center; }
+.footer-text{ color: var(--muted); font-size: 12px; margin: 0 0 4px 0; font-weight: 500; }
+.footer-version{ color: #94A3B8; font-size: 11px; margin: 0; }
+
+/* mobile: drawer */
+@media (max-width: 768px){
+  .sidebar { transform: translateX(-100%); box-shadow: none; }
+  .sidebar.sidebar-open { transform: translateX(0); box-shadow: 12px 0 28px rgba(2,8,23,.16); }
+}
+
+/* overlay para o drawer (se usado) */
+.sidebar-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(2,6,23,.35);
+  backdrop-filter: blur(1px);
+  z-index: 900;
+  display: none;
+}
+.sidebar.sidebar-open ~ .sidebar-overlay{ display: block; }

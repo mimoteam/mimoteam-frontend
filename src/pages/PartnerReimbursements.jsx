@@ -10,7 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import '../styles/PartnerReimbursements.css';
+import '../styles/pages/PartnerReimbursements.css';
 
 // 🔌 usa o backend de /services
 import { fetchServices, createService, deleteService } from '../api/services';

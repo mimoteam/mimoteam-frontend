@@ -1,0 +1,34 @@
+.task-input{ display:flex; gap:8px; margin-bottom:16px; }
+.task-input-field{
+  flex:1; padding:12px 16px; border:1px solid var(--line); border-radius:8px; background: var(--surface-2); font-size:14px; transition:.2s;
+}
+.task-input-field:focus{ outline:none; border-color:var(--brand-400); background: var(--white); }
+.add-task-btn{
+  background: linear-gradient(135deg, var(--brand-400) 0%, var(--brand-500) 100%); color:#fff; border:none; border-radius:8px;
+  width:44px; height:44px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition: transform .2s;
+}
+.add-task-btn:hover{ transform: scale(1.05); }
+.task-list{ display:flex; flex-direction:column; gap:8px; }
+.task-item{
+  display:flex; align-items:center; gap:12px; padding:12px; background: var(--surface-2);
+  border-radius:8px; border:1px solid var(--line); transition:.2s;
+}
+.task-item:hover{ background: rgba(148,163,184,.08); }
+.task-checkbox{ width:18px; height:18px; accent-color: var(--brand-400); transition: transform 140ms ease, box-shadow 140ms ease; }
+.task-checkbox:checked{ transform: scale(1.06); box-shadow: 0 0 0 4px rgba(144,213,255,.20); }
+.task-text{ flex:1; font-size:14px; color:var(--ink); position:relative; transition: color 200ms ease, opacity 200ms ease; }
+.task-text.completed{ text-decoration:line-through; opacity:.6; color:var(--muted); }
+.task-text.completed::after{
+  content:""; position:absolute; left:0; right:0; height:2px; top:50%;
+  transform: translateY(-50%) scaleX(0); transform-origin:left center; background: currentColor; opacity:.85;
+  animation: task-strike 220ms ease-out forwards;
+}
+@keyframes task-strike{ to{ transform: translateY(-50%) scaleX(1); } }
+.task--completing::before{
+  content:""; position:absolute; left:50%; top:50%; width:16px; height:16px; border-radius:999px;
+  background: radial-gradient(circle, var(--brand-400) 0%, rgba(144,213,255,0) 60%);
+  transform: translate(-50%,-50%) scale(.2); opacity:.25; animation: task-ripple 320ms ease-out forwards;
+}
+@keyframes task-ripple{ to{ transform: translate(-50%,-50%) scale(10); opacity:0; } }
+.task--completing{ animation: task-out 300ms ease forwards; }
+@keyframes task-out{ 60%{ transform: translateY(-1px); opacity:.6; } 100%{ transform: translateY(-2px); opacity:0; } }

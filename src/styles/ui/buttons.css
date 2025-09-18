@@ -1,0 +1,131 @@
+/* ===========================
+   BOTÕES GLOBAIS — ÚNICA FONTE
+   =========================== */
+
+/* Fallbacks caso tokens não estejam definidos no projeto */
+:root{
+  --brand-400:#90D5FF;
+  --brand-500:#5BA7F7;
+  --brand-600:#2D8BEF;
+  --brand-700:#1E6ECB;
+  --white:#fff;
+  --danger:#ef4444;
+  --ring: rgba(144,213,255,.35);
+}
+
+/* Base (vale para .btn e também para aliases de variantes) */
+.btn,
+.btn-primary,
+.btn-outline,
+.btn-danger{
+  font: inherit;
+  line-height: 1.2;
+
+  --_pad-y:10px; --_pad-x:16px; --_radius:10px;
+
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+
+  padding:var(--_pad-y) var(--_pad-x);
+  border-radius:var(--_radius);
+  border:1px solid transparent;
+
+  background: var(--white);
+  color: var(--brand-700);
+
+  font-weight:600;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+
+  transition:
+    transform .2s ease,
+    box-shadow .2s ease,
+    background .2s ease,
+    opacity .2s ease,
+    border-color .2s ease,
+    color .2s ease;
+}
+
+.btn:focus,
+.btn-primary:focus,
+.btn-outline:focus,
+.btn-danger:focus{
+  outline:none;
+  box-shadow:0 0 0 4px var(--ring);
+}
+.btn:disabled,
+.btn-primary:disabled,
+.btn-outline:disabled,
+.btn-danger:disabled{
+  opacity:.65; cursor:not-allowed; transform:none;
+}
+
+/* ===== Variantes ===== */
+
+/* Primary: funciona com .btn--primary ou .btn-primary */
+.btn--primary,
+.btn-primary{
+  background: linear-gradient(135deg, var(--brand-400) 0%, var(--brand-500) 100%);
+  color:#fff; border:none;
+  box-shadow: 0 8px 22px rgba(91,167,247,.35), 0 2px 6px rgba(0,0,0,.05);
+}
+.btn--primary:hover:not(:disabled),
+.btn-primary:hover:not(:disabled){
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(91,167,247,.45);
+}
+
+/* Outline */
+.btn--outline,
+.btn-outline{
+  background:var(--white);
+  color:var(--brand-600);
+  border:1px solid var(--brand-400);
+  box-shadow: 0 1px 2px rgba(17,24,39,.04) inset;
+}
+.btn--outline:hover:not(:disabled),
+.btn-outline:hover:not(:disabled){
+  background:#F0F7FF;
+  border-color:var(--brand-500);
+  color:var(--brand-700);
+  transform: translateY(-1px);
+}
+
+/* Danger */
+.btn--danger,
+.btn-danger{
+  background: linear-gradient(135deg, #ff8a8a 0%, var(--danger) 100%);
+  color:#fff; border:none;
+  box-shadow: 0 8px 22px rgba(229,62,62,.25), 0 2px 6px rgba(0,0,0,.05);
+}
+.btn--danger:hover:not(:disabled),
+.btn-danger:hover:not(:disabled){
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(229,62,62,.35);
+}
+
+/* ===== Tamanhos e variações ===== */
+
+/* .btn--sm e alias .btn-sm */
+.btn--sm,
+.btn-sm{
+  --_pad-y:6px; --_pad-x:10px;
+  font-size:12px; border-radius:8px;
+}
+.btn--lg{
+  --_pad-y:14px; --_pad-x:18px;
+  font-size:16px; border-radius:12px;
+}
+.btn--block{ display:flex; width:100%; }
+.btn--icon{ width:40px; height:40px; padding:0; border-radius:10px; }
+.btn--icon.btn--sm{ width:32px; height:32px; }
+.btn--icon.btn--lg{ width:48px; height:48px; }
+.btn-group{ display:inline-flex; gap:8px; flex-wrap:wrap; }
+
+/* Acessibilidade */
+@media (prefers-reduced-motion: reduce){
+  .btn, .btn-primary, .btn-outline, .btn-danger{ transition:none !important; }
+}

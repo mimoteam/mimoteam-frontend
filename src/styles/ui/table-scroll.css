@@ -1,0 +1,30 @@
+/* src/styles/ui/table-scroll.css  (OPT-IN, sem interferir no resto) */
+
+/* Containers que DEVEM rolar na horizontal */
+.services-table-container,
+.data-table-container,
+.table-scroll-x,
+.h-scroll,
+.table-scroll{
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable both-edges;
+}
+
+/* Largura mínima do conteúdo interno (vale para <table> OU grids .table) */
+.services-table-container > :is(table, .table),
+.data-table-container     > :is(table, .table),
+.table-scroll-x           > :is(table, .table),
+.h-scroll                 > :is(table, .table),
+.table-scroll             > :is(table, .table){
+  min-width: 960px; /* ajuste conforme a quantidade de colunas */
+}
+
+/* (Opcional) Se preferir que cada linha/thead tenha largura mínima: */
+:is(.services-table-container,.data-table-container,.table-scroll-x,.h-scroll,.table-scroll)
+  > .table > :is(.thead, .tr){
+  min-width: 960px;
+}

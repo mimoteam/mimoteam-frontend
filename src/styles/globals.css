@@ -1,0 +1,26 @@
+/* ========= CORE ========= */
+@import "./core/reset-and-base.css";
+@import "./core/tokens.css";
+@import "./core/animations.css";
+
+/* ========= UI / UTILITÁRIOS ========= */
+@import "./ui/effects.css";
+@import "./ui/buttons.css";            /* ← classes .btn globais */
+@import "./ui/tasks.css";
+@import "./ui/table-scroll.css";
+@import "./ui/titles.css";
+@import "./ui/finance-table-reset.css";
+@import "./ui/Sidebar.css";
+
+/* ========= LAYOUT ========= */
+@import "./Layout.css";
+@import "./layout/header.css";
+
+/* ========= (REMOVIDO) PÁGINAS =========
+   Cada página importa seu próprio CSS localmente.
+   Ex.: LightningLanesDashboard.jsx → import "../styles/pages/LightningLanesDashboard.css"
+*/
+
+/* ========= BASES MÍNIMAS ========= */
+:root { color-scheme: light; }
+#root { width: 100%; min-height: 100vh; }

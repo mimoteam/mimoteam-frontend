@@ -11,7 +11,7 @@ import {
   AlertCircle,
   CheckCircle2
 } from "lucide-react";
-import "../styles/PartnerCalendar.css";
+import "../styles/pages/PartnerCalendar.css";
 import * as AvApi from "../api/availability";
 
 /** Local storage base key (apenas para compat em cache leve) */

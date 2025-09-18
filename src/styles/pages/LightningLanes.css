@@ -1,0 +1,227 @@
+/* =========================================================
+   LIGHTNING LANES (LLN) – página inteira, isolada
+   -> 9 colunas (ordem): Client | Date | Type | Method | Last4 | Amount | Obs | Upload By | Status
+   ========================================================= */
+
+.lln-page{
+  padding:16px 20px;
+  background:#f8fafc;
+  min-height:100dvh;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Inter,system-ui,sans-serif;
+  color:#0b1021;
+}
+
+/* ===== Título / Meta ===== */
+.lln-page .page-title{
+  display:flex; align-items:center; justify-content:space-between;
+  background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px; margin-bottom:14px;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+}
+.lln-page .page-meta{ display:flex; gap:8px; align-items:center; }
+.lln-page .meta-pill{
+  display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px;
+  border:1px solid #e5e7eb; background:#fff; font-weight:700; font-size:12px; color:#374151;
+}
+
+/* ===== Filtros ===== */
+.lln-filters{
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  padding:14px 16px;
+  margin-bottom:10px;
+  display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;
+}
+.lln-filters .filters-left{ display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+.lln-filters .filter-field{ display:flex; flex-direction:column; gap:6px; min-width:200px; }
+.lln-filters .filter-field label{
+  font-size:12px; font-weight:600; color:#374151; text-transform:uppercase; letter-spacing:.4px;
+}
+.lln-filters .filter-input{
+  padding:10px 12px; border:1px solid #d1d5db; border-radius:10px; background:#fff; font-size:14px;
+}
+.lln-filters .filter-input:focus{ outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.12); }
+
+.lln-filters .filters-right{ display:flex; align-items:center; gap:10px; }
+.lln-filters .filters-caption{ color:#64748b; font-weight:600; display:flex; align-items:center; gap:6px; }
+
+/* ===== Botões (Admin usa globais como base; aqui só variantes locais) */
+/* NENHUM seletor genérico .lln-page .btn para não sobrepor o global */
+.lln-page .btn.outline{ background:#fff; color:#374151; border-color:#e5e7eb; }
+.lln-page .btn.outline:hover{ background:#f3f4f6; border-color:#94a3b8; }
+.lln-page .btn.danger{ background:#b91c1c; color:#fff; border-color:#b91c1c; }
+.lln-page .btn.outline.danger{ color:#b91c1c; border-color:#fecaca; background:#fff; }
+.lln-page .btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+/* =========================================================
+   CARD / TABELA – 9 COLUNAS
+   ========================================================= */
+.lln-card{
+  /* Tokens de coluna */
+  --c1: minmax(240px,1.4fr);  /* Client */
+  --c2: 120px;                /* Visit Date */
+  --c3: 140px;                /* Type */
+  --c4: 160px;                /* Payment Method */
+  --c5: 80px;                 /* Last 4 */
+  --c6: 110px;                /* Amount */
+  --c7: minmax(340px,2fr);    /* Observations */
+  --c8: 160px;                /* Upload By */
+  --c9: 110px;                /* Status */
+
+  background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.06);
+  overflow:hidden; display:flex; flex-direction:column; min-height:0;
+}
+
+/* Cabeçalho (usa a MESMA grade das linhas) */
+.lln-thead{
+  position:sticky; top:0; z-index:2;
+  display:grid;
+  grid-template-columns: var(--c1) var(--c2) var(--c3) var(--c4) var(--c5) var(--c6) var(--c7) var(--c8) var(--c9);
+  gap:12px;
+  padding:12px 16px;
+  background:#f8fafc;
+  border-bottom:1px solid #e2e8f0;
+  font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.4px;
+}
+.lln-thead > *{ min-width:0; }
+.lln-thead .th{ display:flex; align-items:center; height:100%; justify-content:center; }
+.lln-thead .th.client,
+.lln-thead .th.obs,
+.lln-thead .th.by{ justify-content:flex-start; }
+.lln-thead .th.amount{ justify-content:flex-end; }
+.lln-thead .th.status{ justify-content:center; }
+
+/* Corpo com rolagem */
+.lln-tbody{
+  max-height:calc(100dvh - 360px);
+  overflow:auto; -webkit-overflow-scrolling:touch; scrollbar-gutter:stable both-edges;
+}
+.lln-tbody::-webkit-scrollbar{ width:8px; height:8px; }
+.lln-tbody::-webkit-scrollbar-track{ background:#f1f5f9; border-radius:4px; }
+.lln-tbody::-webkit-scrollbar-thumb{ background:#cbd5e1; border-radius:4px; }
+.lln-tbody::-webkit-scrollbar-thumb:hover{ background:#94a3b8; }
+
+/* Linhas */
+.lln-row{
+  margin:8px 10px; border:1px solid #e5e7eb; border-radius:10px; background:#fff;
+  transition:box-shadow .15s, border-color .15s, background .15s;
+}
+.lln-row:hover{ box-shadow:0 2px 8px rgba(0,0,0,.06); }
+.lln-row.selected{ border-color:#34d399; background:#f0fdf4; box-shadow:0 0 0 2px #bbf7d0 inset; }
+
+/* Conteúdo da linha (MESMA grade do header) */
+.row-main{
+  display:grid;
+  grid-template-columns: var(--c1) var(--c2) var(--c3) var(--c4) var(--c5) var(--c6) var(--c7) var(--c8) var(--c9);
+  align-items:center; gap:12px; padding:12px 16px;
+}
+.cell{
+  min-width:0; display:flex; align-items:center; height:100%; padding:4px 0;
+}
+.cell.truncate{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cell.client, .cell.obs, .cell.by{ justify-content:flex-start; }
+.cell.amount{ justify-content:flex-end; font-variant-numeric:tabular-nums; font-weight:700; color:#059669; }
+.cell.status{ justify-content:center; gap:8px; font-weight:600; color:#374151; }
+.cell:not(.client):not(.obs):not(.by):not(.amount):not(.status){ justify-content:center; }
+
+/* Botão de expand colado à borda do cartão (fora da grade) */
+.row-expand-toggle{ padding:0 16px 8px; display:flex; }
+.expand-btn{
+  display:inline-flex; align-items:center; gap:8px; padding:6px 10px;
+  border-radius:8px; border:1px dashed #e2e8f0; background:#fff; font-weight:700; color:#64748b; cursor:pointer;
+}
+.expand-btn:hover{ background:#f9fafb; }
+
+/* Breakdown (alinha com colunas 1..9) */
+.expand{ max-height:0; overflow:hidden; transition:max-height .25s ease, padding .25s ease; padding:0 16px; }
+.expand.show{ max-height:900px; padding:6px 16px 12px; }
+
+.subhead, .subrow{
+  display:grid;
+  grid-template-columns: var(--c1) var(--c2) var(--c3) var(--c4) var(--c5) var(--c6) var(--c7) var(--c8) var(--c9);
+  align-items:center; gap:12px;
+}
+.subhead{
+  font-size:11px; text-transform:uppercase; font-weight:700; color:#475569;
+  padding:10px 0; border-bottom:1px dashed #e2e8f0; margin-bottom:6px;
+}
+.subhead .h{ display:flex; align-items:center; justify-content:center; }
+.subhead .h.client, .subhead .h.obs, .subhead .h.by{ justify-content:flex-start; }
+.subhead .h.amount{ justify-content:flex-end; }
+
+.subrow{ padding:10px 0; border-bottom:1px solid #f8fafc; }
+.subrow:last-child{ border-bottom:none; }
+.subrow > div{ display:flex; align-items:center; height:100%; }
+.subrow .client, .subrow .obs, .subrow .by{ justify-content:flex-start; }
+.subrow .amount{ justify-content:flex-end; font-weight:700; color:#059669; }
+
+/* Pílulas / mini estilos */
+.pill{ border:1px solid #e5e7eb; border-radius:12px; padding:8px 10px; background:#fff; }
+.muted{ opacity:.6; }
+.strong{ font-weight:700; }
+
+/* Status dots */
+.dot{ width:10px; height:10px; border-radius:999px; display:inline-block; }
+.dot-green{ background:#22c55e; }
+.dot-gray{ background:#9ca3af; }
+
+/* Vazio / loading */
+.lln-empty{ padding:18px; text-align:center; color:#6b7280; font-weight:600; }
+.lln-empty.small{ padding:6px 0; font-size:12px; }
+
+/* Paginação */
+.lln-pager{
+  border-top:1px solid #e2e8f0; background:#f8fafc;
+  display:flex; align-items:center; justify-content:center; gap:12px; padding:12px 16px;
+}
+.lln-pager .pageinfo{ color:#374151; }
+
+/* Lightbox (se usar para recibos) */
+.lln-lightbox{ position:fixed; inset:0; background:rgba(0,0,0,.75); display:flex; align-items:center; justify-content:center; z-index:9999; padding:12px; cursor:zoom-out; }
+.lln-lightbox img{ max-width:95vw; max-height:90vh; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.5); background:#fff; }
+
+/* ===== Responsivo: ajusta tokens, preserva 9 colunas ===== */
+@media (max-width:1150px){
+  .lln-card{
+    --c1: minmax(210px,1.2fr);
+    --c3: 150px;
+    --c4: 150px;
+    --c6: 100px;
+    --c7: minmax(300px,2fr);
+    --c8: 150px;
+    --c9: 110px;
+  }
+}
+@media (max-width:920px){
+  .lln-card{
+    --c1: minmax(180px,1fr);
+    --c2: 110px;
+    --c3: 140px;
+    --c4: 140px;
+    --c5: 70px;
+    --c6: 90px;
+    --c7: minmax(260px,1.6fr);
+    --c8: 140px;
+    --c9: 100px;
+  }
+  .lln-thead{ padding:12px 14px; gap:10px; }
+  .row-main{ padding:10px 14px; gap:10px; }
+}
+@media (max-width:760px){
+  .lln-page{ padding:12px; }
+  .lln-tbody{ max-height:calc(100dvh - 340px); }
+  .lln-card{
+    --c1: minmax(160px,1fr);
+    --c2: 100px;
+    --c3: 120px;
+    --c4: 120px;
+    --c5: 64px;
+    --c6: 84px;
+    --c7: minmax(220px,1.5fr);
+    --c8: 130px;
+    --c9: 92px;
+  }
+  .lln-thead{ padding:10px 12px; gap:8px; font-size:11px; }
+  .row-main{ padding:8px 12px; gap:8px; }
+  .cell{ font-size:13px; }
+}
