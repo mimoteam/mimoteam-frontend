@@ -1,7 +1,43 @@
-@import "src/styles/partner/PartnerTokens.css";
+/* ✅ Corrige o caminho para Vite (relativo à pasta /styles/pages) */
+@import "../partner/PartnerTokens.css";
 
+/* ===================  BLOCO CRÍTICO: neutralizar globais  =================== */
+/* Alguns temas globais usam gradient text (background-clip:text) e/ou color:transparent
+   em .btn.primary .btn-label. Aqui, em todo escopo partner (.pml-wrap), voltamos ao
+   comportamento “normal”: texto branco e fundo sólido/gradiente.                  */
 
-/* Página LL – mobile-first dentro do layout */
+.pml-wrap .btn.primary {
+  /* fundo com fallback — mesmo que tokens não tenham carregado */
+  background: linear-gradient(180deg, var(--c-first, #2e94b9), #2384a9) !important;
+  background-color: var(--c-first, #2e94b9) !important;
+  color: #fff !important;
+  border: 1px solid color-mix(in oklab, var(--c-first, #2e94b9) 55%, white 45%) !important;
+  box-shadow: 0 6px 14px rgba(46,148,185,.20) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.pml-wrap .btn.primary .btn-label,
+.pml-wrap .btn.primary .btn-label * {
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+  -webkit-text-fill-color: #fff !important;
+  color: #fff !important;
+  mix-blend-mode: normal !important;
+  text-shadow: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  white-space: nowrap;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.pml-wrap .btn .btn-label svg{ flex:0 0 auto; }
+
+/* ===================  Página LL  =================== */
+
 .pml-wrap .page-ll{
   padding: 12px;
   display: flex; flex-direction: column; gap: 14px;
@@ -50,15 +86,23 @@
 }
 
 /* Buttons */
-.pml-wrap .btn{ display:inline-flex; align-items:center; gap:4px; padding:.45rem .8rem; border-radius:10px; font-size:.85rem; font-weight:800; cursor:pointer; border:1px solid transparent; }
-.pml-wrap .btn.primary{ background: linear-gradient(180deg, var(--c-first), #2384a9); color:#fff; }
-.pml-wrap .btn.primary:hover{ filter: brightness(1.03); }
+.pml-wrap .btn{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:.52rem .9rem; border-radius:12px; font-size:.9rem; font-weight:800;
+  cursor:pointer; border:1px solid transparent;
+}
+.pml-wrap .btn .btn-label{ display:inline-flex; align-items:center; gap:8px; }
+
+/* variantes não-primárias */
 .pml-wrap .btn.outline{ background:#fff; border:1px solid #cbd5e1; color:#374151; }
 .pml-wrap .btn.outline:hover{ background:#f8fafc; }
 .pml-wrap .btn.danger{ background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; }
 .pml-wrap .btn.danger:hover{ background:#fee2e2; }
 
-.pml-wrap .icon-btn{ background: rgba(0,0,0,.55); border: none; color: #fff; border-radius: 50%; width: 22px; height: 22px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.pml-wrap .icon-btn{
+  background: rgba(0,0,0,.55); border: none; color: #fff; border-radius: 50%;
+  width: 22px; height: 22px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
 
 /* Lista */
 .pml-wrap .ll-list{
@@ -80,9 +124,9 @@
 .pml-wrap .ll-badge{ font-size:.75rem; background:#e0f2fe; color:#1e3a8a; border-radius:6px; padding:.12rem .4rem; white-space:nowrap; }
 .pml-wrap .ll-item-meta{ font-size:.85rem; color:#374151; font-weight: 700; }
 
-/* delete apenas expandido */
+/* delete aparece quando aberto */
 .pml-wrap .ll-del-lane{ display:none; position:absolute; top:10px; right:10px; z-index:2; white-space:nowrap; }
-.pml-wrap .ll-item.expanded .ll-del-lane{ display:inline-flex; }
+.pml-wrap .ll-item.open .ll-del-lane{ display:inline-flex; }
 .pml-wrap .ll-del-lane.btn.danger{ padding:.35rem .6rem; font-size:.75rem; }
 
 .pml-wrap .ll-item-summary{ display:flex; flex-wrap:wrap; gap:8px 10px; margin-top:8px; color:#374151; }
@@ -95,7 +139,9 @@
 .pml-wrap .ll-item-details{ margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb; }
 .pml-wrap .ll-item-receipts{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
 .pml-wrap .ll-receipt{ position:relative; }
-.pml-wrap .ll-receipt img{ width:78px; height:78px; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; background:#fff; display:block; }
+.pml-wrap .ll-receipt img{
+  width:78px; height:78px; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; background:#fff; display:block;
+}
 .pml-wrap .ll-receipt .icon-btn{ position:absolute; top:-6px; right:-6px; }
 
 /* Paginação */

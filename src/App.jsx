@@ -458,20 +458,11 @@ function App() {
   const [showIdleWarn, setShowIdleWarn] = useState(false);
   const idleRef = useRef({ reset: () => {} });
 
-  // ====== Passkeys (WebAuthn nativo) ======
-  const [webauthnReady, setWebauthnReady] = useState(false);
-  const [passkeyBusy, setPasskeyBusy] = useState(false);
-  const [passkeyMessage, setPasskeyMessage] = useState('');
-
   // Não força tema — deixa CSS decidir pela paleta do sistema
   useEffect(() => {
     const root = document.documentElement;
     root.removeAttribute('data-theme');
     try { root.style.removeProperty('color-scheme'); } catch {}
-  }, []);
-
-  useEffect(() => {
-    setWebauthnReady(typeof window !== 'undefined' && 'PublicKeyCredential' in window);
   }, []);
 
   const SIDEBAR_W_OPEN = 289;
@@ -487,12 +478,11 @@ function App() {
   const updateField = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (error) setError('');
-    if (passkeyMessage) setPasskeyMessage('');
   };
 
   useEffect(() => { normalizeUsersStore(); }, []);
 
-  // ===== Helpers de sessão (reuso para senha e passkey)
+  // ===== Helpers de sessão (reuso para senha)
   const onAuthSuccess = useCallback((user, token) => {
     const ensuredId = ensureStableId(user);
     const ensuredUser = {
@@ -537,87 +527,6 @@ function App() {
       setIsLoggingIn(false);
     }
   };
-
-  // ====== Passkeys (login)
-  const loginWithPasskey = useCallback(async () => {
-    setPasskeyMessage('');
-    if (!webauthnReady) { setPasskeyMessage('Passkeys not supported on this device/browser.'); return; }
-    setPasskeyBusy(true);
-    try {
-      // ⚠️ sem "/" → vai para /api/webauthn/login/options
-      const options = await api('webauthn/login/options', {
-        method: 'POST',
-        body: { username: formData.user?.trim() || undefined },
-      });
-      const req = toRequestOptions(options);
-      if (!req) throw new Error('Invalid WebAuthn request options');
-
-      const cred = await navigator.credentials.get(req);
-      const payload = credToJSON_Assertion(cred);
-
-      const result = await api('webauthn/login/verify', {
-        method: 'POST',
-        body: payload,
-      });
-      if (result?.user) {
-        onAuthSuccess(result.user, result.token);
-      } else {
-        setPasskeyMessage(result?.message || 'Could not sign in with passkey.');
-      }
-    } catch (e) {
-      setPasskeyMessage(e?.message || 'Passkey sign-in failed.');
-    } finally {
-      setPasskeyBusy(false);
-    }
-  }, [formData.user, onAuthSuccess, webauthnReady]);
-
-  // ====== Passkeys (registro)
-  const registerPasskey = useCallback(async () => {
-    setPasskeyMessage('');
-    if (!webauthnReady) { setPasskeyMessage('Passkeys not supported on this device/browser.'); return; }
-    setPasskeyBusy(true);
-    try {
-      const username = (currentUser?.email || currentUser?.login || formData.user || '').trim();
-      const displayName = (currentUser?.fullName || username || 'User').trim();
-      if (!username) {
-        setPasskeyMessage('Type your username first to create a passkey.');
-        setPasskeyBusy(false);
-        return;
-      }
-      // ⚠️ sem "/" → vai para /api/webauthn/register/options
-      const options = await api('webauthn/register/options', {
-        method: 'POST',
-        body: currentUser ? {
-          userId: currentUser.id,
-          username,
-          displayName,
-        } : { username, displayName },
-      });
-
-      const pubKey = toCreationOptions(options);
-      if (!pubKey) throw new Error('Invalid WebAuthn creation options');
-
-      const cred = await navigator.credentials.create(pubKey);
-      const payload = credToJSON_Attestation(cred);
-
-      const result = await api('webauthn/register/verify', {
-        method: 'POST',
-        body: payload,
-      });
-      if (result?.ok && result?.user) {
-        onAuthSuccess(result.user, result.token);
-        setPasskeyMessage('Passkey created and linked to your account.');
-      } else if (result?.ok) {
-        setPasskeyMessage('Passkey created. You can now sign in with “Sign in with Passkey”.');
-      } else {
-        setPasskeyMessage(result?.message || 'Could not complete passkey registration.');
-      }
-    } catch (e) {
-      setPasskeyMessage(e?.message || 'Passkey registration failed.');
-    } finally {
-      setPasskeyBusy(false);
-    }
-  }, [currentUser, formData.user, onAuthSuccess, webauthnReady]);
 
   // ===== Logout helpers (encerra sessão servidor + client)
   const serverLogout = useCallback(async () => {
@@ -825,9 +734,9 @@ function App() {
           <h1 className="login-title">MIMO TEAM</h1>
           <p className="login-subtitle">Team Management and Performance Portal</p>
 
-          {(error || passkeyMessage) && (
+          {error && (
             <div className="error-message" style={{ whiteSpace: 'pre-wrap' }}>
-              {error || passkeyMessage}
+              {error}
             </div>
           )}
 
@@ -840,7 +749,7 @@ function App() {
                 value={formData.user}
                 onChange={(e) => updateField('user', e.target.value)}
                 required
-                disabled={isLoggingIn || passkeyBusy}
+                disabled={isLoggingIn}
                 autoComplete="username"
               />
             </div>
@@ -853,14 +762,14 @@ function App() {
                 value={formData.password}
                 onChange={(e) => updateField('password', e.target.value)}
                 required
-                disabled={isLoggingIn || passkeyBusy}
+                disabled={isLoggingIn}
                 autoComplete="current-password"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="password-toggle"
-                disabled={isLoggingIn || passkeyBusy}
+                disabled={isLoggingIn}
                 aria-label="Toggle password"
               >
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -870,7 +779,7 @@ function App() {
             <button
               type="submit"
               className="login-button modern-button"
-              disabled={isLoggingIn || passkeyBusy}
+              disabled={isLoggingIn}
             >
               {isLoggingIn ? (
                 <>
@@ -883,32 +792,7 @@ function App() {
             </button>
           </form>
 
-          {/* —— Passkeys —— */}
-          <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
-            <button
-              type="button"
-              onClick={loginWithPasskey}
-              disabled={!webauthnReady || passkeyBusy}
-              className="login-button passkey-login"
-              title={webauthnReady ? 'Use a Passkey (FaceID/TouchID/Windows Hello)' : 'Passkeys not supported in this browser'}
-            >
-              {passkeyBusy ? 'Please wait…' : 'Sign in with Passkey'}
-            </button>
-            <button
-              type="button"
-              onClick={registerPasskey}
-              disabled={!webauthnReady || passkeyBusy}
-              className="login-button passkey-create"
-              title="Create a Passkey for 1-tap login"
-            >
-              {passkeyBusy ? 'Please wait…' : 'Create a Passkey'}
-            </button>
-            {!webauthnReady && (
-              <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
-                Your browser/device does not support Passkeys (WebAuthn).
-              </div>
-            )}
-          </div>
+          {/* (Passkey UI removida) */}
         </div>
       </div>
     );

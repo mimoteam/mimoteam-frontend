@@ -78,6 +78,7 @@ export default function PartnerLightningLanes() {
   const pages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
 
   const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Lightbox (zoom da foto)
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -172,10 +173,12 @@ export default function PartnerLightningLanes() {
   }, [rows]);
 
   async function saveAll() {
+    if (saving) return;
     const client = titleCaseName(clientOnce);
     if (!client) { setMsg("Please fill the client name."); return; }
-    let savedCount = 0;
+    setSaving(true);
 
+    let savedCount = 0;
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const hasCore = (r.laneType && r.paymentMethod) || r.amount || (r.files?.length > 0) || r.observation;
@@ -214,6 +217,7 @@ export default function PartnerLightningLanes() {
     } else {
       setMsg("Nothing to save.");
     }
+    setSaving(false);
   }
 
   async function removeReceipt(laneId, url) {
@@ -384,8 +388,20 @@ export default function PartnerLightningLanes() {
           <button className="btn outline" onClick={addRow}>
             <Plus size={18} /> Add Another Lightning Lane
           </button>
-          <button className="btn primary" onClick={saveAll}>
-            <Save size={18} /> Save All
+
+          {/* Botão de salvar com classe dedicada */}
+          <button
+            type="button"
+            className="btn primary ll-save-btn"
+            data-qa="ll-save"
+            aria-busy={saving ? "true" : "false"}
+            disabled={saving}
+            onClick={saveAll}
+          >
+            <span className="btn-label">
+              <Save size={18} />
+              {saving ? "Saving…" : "Save All"}
+            </span>
           </button>
         </div>
       </div>
@@ -434,7 +450,6 @@ export default function PartnerLightningLanes() {
                       </button>
                     </div>
 
-                    {/* resumo em chips */}
                     <div className="ll-item-summary">
                       <span className="ll-chip">${Number(it.amount || 0).toFixed(2)}</span>
                       <span className="ll-chip">
@@ -487,7 +502,6 @@ export default function PartnerLightningLanes() {
               })}
             </ul>
 
-            {/* paginação */}
             <div className="ll-pager">
               <button className="btn outline" disabled={page <= 1} onClick={goPrev}>Prev</button>
               <span className="ll-pageinfo">
