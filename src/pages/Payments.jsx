@@ -1,4 +1,3 @@
-// src/pages/Payments.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar, DollarSign, Users, Trash2, Edit3, Save, Loader, Filter, Info,
@@ -15,116 +14,112 @@ import { getServicesPayStatus } from "../api/payments";
 const DEBUG_PAYSTATUS = false;
 
 /** ===================== FUSO/SEMANA DO NEGÓCIO ===================== **
- *  Regras:
- *  - Fuso oficial: America/New_York
- *  - Semana de pagamento: Quarta 00:00 → Terça 23:59:59 (no fuso do negócio)
- *  - Toda conversão/label é feita considerando o fuso do negócio,
- *    evitando “um dia a menos” para quem está em outros fusos.
+ *  - Fuso fixo: America/New_York
+ *  - Semana: Quarta (00:00) → Terça (23:59:59)
+ *  - Todos os usuários compartilham o mesmo range
  */
 const BUSINESS_TZ = 'America/New_York';
-const BUSINESS_WEEK_START_DOW = 3; // 0=Dom, 1=Seg, 2=Ter, 3=Qua
-
+const BUSINESS_WEEK_START_DOW = 3; // Quarta-feira
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Constrói uma data UTC que representa o horário local do TZ fornecido
+// Retorna data UTC representando horário local do TZ
 function toZonedDate(input, timeZone = BUSINESS_TZ) {
   const d = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(d.getTime())) return new Date(NaN);
   const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hourCycle: 'h23',
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
   });
-  const parts = fmt.formatToParts(d).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
-  const y = +parts.year, m = +parts.month, day = +parts.day;
-  const hh = +parts.hour, mm = +parts.minute, ss = +parts.second;
-  return new Date(Date.UTC(y, m - 1, day, hh, mm, ss, 0));
+  const parts = Object.fromEntries(fmt.formatToParts(d).map(p => [p.type, p.value]));
+  return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second));
 }
-
-function startOfDayInTZ(input, timeZone = BUSINESS_TZ) {
-  const z = toZonedDate(input, timeZone);
-  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
-  const parts = fmt.formatToParts(z).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
-  return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day, 0, 0, 0, 0));
+function startOfDayInTZ(date, tz = BUSINESS_TZ) {
+  const d = toZonedDate(date, tz);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
 }
-function endOfDayInTZ(input, timeZone = BUSINESS_TZ) {
-  const s = startOfDayInTZ(input, timeZone);
+function endOfDayInTZ(date, tz = BUSINESS_TZ) {
+  const s = startOfDayInTZ(date, tz);
   return new Date(s.getTime() + DAY_MS - 1);
 }
 function addDaysUTC(date, days) {
-  const d = new Date(date.getTime());
+  const d = new Date(date);
   d.setUTCDate(d.getUTCDate() + days);
   return d;
 }
 
-// Início da semana de negócio (Quarta 00:00 no TZ) e fim (Terça 23:59:59)
-function startOfBusinessWeekInTZ(input, timeZone = BUSINESS_TZ, weekStartDow = BUSINESS_WEEK_START_DOW) {
-  const sod = startOfDayInTZ(input, timeZone);
-  const dow = sod.getUTCDay(); // 0..6 (UTC, mas já mapeado p/ 00:00 local)
-  const delta = ((dow - weekStartDow + 7) % 7);
+// Início e fim da semana de negócio (sempre Quarta → Terça)
+function startOfBusinessWeekInTZ(date, tz = BUSINESS_TZ, startDow = BUSINESS_WEEK_START_DOW) {
+  const sod = startOfDayInTZ(date, tz);
+  const dow = sod.getUTCDay();
+  const delta = (dow - startDow + 7) % 7;
   return addDaysUTC(sod, -delta);
 }
-function endOfBusinessWeekInTZ(input, timeZone = BUSINESS_TZ) {
-  const s = startOfBusinessWeekInTZ(input, timeZone);
-  return endOfDayInTZ(addDaysUTC(s, 6), timeZone);
+function endOfBusinessWeekInTZ(date, tz = BUSINESS_TZ) {
+  const s = startOfBusinessWeekInTZ(date, tz);
+  return endOfDayInTZ(addDaysUTC(s, 6), tz);
 }
 
+// ISO (YYYY-MM-DD) no fuso fixo
 function isoDateInBusinessTZ(input) {
   const s = startOfDayInTZ(input, BUSINESS_TZ);
-  const y = s.getUTCFullYear();
-  const m = String(s.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(s.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, '0')}-${String(s.getUTCDate()).padStart(2, '0')}`;
 }
 function formatDateTZ(input, opts) {
-  const d = input instanceof Date ? input : new Date(input);
-  const f = new Intl.DateTimeFormat('en-US', { timeZone: BUSINESS_TZ, year: 'numeric', month: 'short', day: '2-digit', ...(opts || {}) });
-  return f.format(d);
+     const d = input instanceof Date ? input : new Date(input);
+     return new Intl.DateTimeFormat('en-US', {
+       timeZone: 'UTC', year: 'numeric', month: 'short', day: '2-digit', ...(opts || {})
+     }).format(d);
+   }
+
+// ===================== CORREÇÃO #1: weekKey ancorado no “ano de quarta” =====================
+// Primeira semana do ano de negócio: 1ª quarta-feira (>= 1º de janeiro) às 00:00 no TZ
+function getBusinessYearFirstWeekStart(year) {
+  const jan1 = startOfDayInTZ(new Date(Date.UTC(year, 0, 1)), BUSINESS_TZ);
+  const dow = jan1.getUTCDay();
+  const deltaForward = (BUSINESS_WEEK_START_DOW - dow + 7) % 7; // avança até a primeira Quarta >= 1/jan
+  return addDaysUTC(jan1, deltaForward);
 }
 
-// Semana de pagamento (Quarta→Terça) para uma referência
+// Calcula semana MIMO (Quarta→Terça) p/ data — usando âncora da primeira Quarta
 function getPaymentWeekTZ(date = new Date()) {
-  const start = startOfBusinessWeekInTZ(date, BUSINESS_TZ);
-  const end = endOfBusinessWeekInTZ(date, BUSINESS_TZ);
-  // weekKey compatível (ano/semana baseada no início da semana, em UTC)
-  const y = start.getUTCFullYear();
-  const jan1UTC = new Date(Date.UTC(y, 0, 1));
-  const diffDays = Math.floor((start - jan1UTC) / DAY_MS);
-  const wk = Math.ceil((diffDays + jan1UTC.getUTCDay() + 1) / 7);
-  const key = `${y}-W${String(wk).padStart(2, '0')}`;
+  const start = startOfBusinessWeekInTZ(date);
+  const end   = endOfBusinessWeekInTZ(date);
+  const yearAnchor = start.getUTCFullYear();
+  const first = getBusinessYearFirstWeekStart(yearAnchor);
+  const weekIndex = Math.floor((start - first) / (7 * DAY_MS)); // 0-based
+  const key = `${yearAnchor}-W${String(weekIndex + 1).padStart(2, '0')}`;
   return { start, end, key };
 }
-function build5WeeksTZ(centerDate) {
-  const center = getPaymentWeekTZ(centerDate).start;
-  const list = [];
-  for (let i = -2; i <= 2; i++) {
-    const ref = addDaysUTC(center, i * 7);
-    const w = getPaymentWeekTZ(ref);
-    list.push(w);
-  }
-  return list;
+
+function build5WeeksTZ(center) {
+  const base = getPaymentWeekTZ(center).start;
+  return Array.from({ length: 5 }, (_, i) => getPaymentWeekTZ(addDaysUTC(base, (i - 2) * 7)));
 }
 
-// Filtro por intervalo usando limites do dia no fuso do negócio
+// Dentro de range (TZ-safe)
 function withinTZ(dateIso, fromIso, toIso) {
-  const t = toZonedDate(dateIso, BUSINESS_TZ).getTime();
-  const f = fromIso ? startOfDayInTZ(fromIso, BUSINESS_TZ).getTime() : -Infinity;
-  const tt = toIso ? endOfDayInTZ(toIso, BUSINESS_TZ).getTime() : Infinity;
+  const t = toZonedDate(dateIso).getTime();
+  const f = fromIso ? startOfDayInTZ(fromIso).getTime() : -Infinity;
+  const tt = toIso ? endOfDayInTZ(toIso).getTime() : Infinity;
   return t >= f && t <= tt;
 }
-const formatDate = (iso) => (iso ? formatDateTZ(iso) : '—');
+
+const formatDate = (iso) => iso ? formatDateTZ(iso) : '—';
 const formatCurrency = (n) => `$${Number(n || 0).toFixed(2)}`;
 const uuid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+// ===================== CORREÇÃO #4: arraysEqualAsSets robusto =====================
 const arraysEqualAsSets = (a = [], b = []) => {
-  if (a.length !== b.length) return false;
-  const sa = new Set(a.map(String));
-  for (const x of b) if (!sa.has(String(x))) return false;
+  const sa = new Set((a || []).map(String));
+  const sb = new Set((b || []).map(String));
+  if (sa.size !== sb.size) return false;
+  for (const v of sa) if (!sb.has(v)) return false;
   return true;
 };
+
 const fmtApiDateTZ = (d) => (d ? isoDateInBusinessTZ(d) : '');
 const getErrorMessage = (e, fb = 'Unexpected error') =>
-  e?.response?.data?.message || e?.response?.data?.error || e?.data?.message || e?.message || fb;
+  e?.response?.data?.message || e?.response?.data?.error || e?.message || fb;
 
 /** ===================== Tipos (para reidratar) ===================== */
 const serviceTypes = [
@@ -286,6 +281,7 @@ async function fetchAllPayments() {
     partnerName: p.partnerName || p.partner?.name || p.partner?.fullName || ''
   }));
 }
+
 /** ===================== Componente ===================== */
 const Payments = () => {
   const [loading, setLoading] = useState(false);
@@ -363,7 +359,7 @@ const Payments = () => {
     return map;
   }, [allServices]);
 
-  // ⚠️ Ordena por criação DESC (fallback para serviceDate), garantindo "mais recentes em cima"
+  // Ordena por criação DESC (fallback para serviceDate)
   const filteredServices = useMemo(() => {
     let arr = Array.isArray(allServices) ? [...allServices] : [];
     if (selectedPartner) arr = arr.filter(s => (s.partner?.id || s.partnerId) === selectedPartner);
@@ -441,6 +437,7 @@ const Payments = () => {
     return out;
   };
 
+  // ===================== usa arraysEqualAsSets robusto (CORREÇÃO #4) =====================
   async function findJustCreatedPayment({ partnerId, weekKey: wkKey, weekStart, weekEnd, serviceIds }) {
     const list = await fetchAllPayments();
     setPayments(list);
@@ -448,8 +445,7 @@ const Payments = () => {
       if (p.partnerId !== partnerId) return false;
       const pKey = p.week?.key || p.weekKey || '';
       if (wkKey && pKey && pKey !== wkKey) return false;
-      const ids = (p.serviceIds || []).map(String);
-      return arraysEqualAsSets(ids, serviceIds.map(String));
+      return arraysEqualAsSets((p.serviceIds || []).map(String), serviceIds.map(String));
     });
     return found || null;
   }
@@ -664,29 +660,35 @@ const Payments = () => {
   const cancelAddServices = () => {
     setAddPicker({ paymentId: null, items: [], selected: new Set(), loading: false });
   };
-
   /** ===== Paginação (payments/services) */
-  const totalPaymentsPages = useMemo(() => Math.max(1, Math.ceil((payments.length || 0) / payPageSize)), [payments.length, payPageSize]);
+  const totalPaymentsPages = useMemo(() =>
+    Math.max(1, Math.ceil((payments.length || 0) / payPageSize)),
+    [payments.length, payPageSize]
+  );
+
+  // ===================== CORREÇÃO #2: filtro de mês por INTERSEÇÃO =====================
+  function paymentIntersectsMonth(p, ym) {
+    if (!ym) return true;
+    const [y, m] = ym.split('-').map(Number);
+    const monthStart = toZonedDate(`${y}-${String(m).padStart(2,'0')}-01T00:00:00`);
+    const nextMonth  = (m === 12)
+      ? toZonedDate(`${y+1}-01-01T00:00:00`)
+      : toZonedDate(`${y}-${String(m+1).padStart(2,'0')}-01T00:00:00`);
+    const monthEnd = new Date(nextMonth.getTime() - 1);
+
+    const start = toZonedDate(p.week?.start || p.weekStart || p.periodFrom || p.createdAt || p.created_at);
+    const end   = toZonedDate(p.week?.end   || p.weekEnd   || p.periodTo   || p.createdAt || p.created_at);
+
+    if (Number.isNaN(start) || Number.isNaN(end)) return false;
+    return start <= monthEnd && end >= monthStart; // há interseção
+  }
+
   const paginatedPayments = useMemo(() => {
     let arr = payments.slice();
 
-    const isSameYYYYMM = (iso, ym) => {
-      if (!iso || !ym) return false;
-      const d = toZonedDate(iso, BUSINESS_TZ);
-      const [y, m] = ym.split('-').map(Number);
-      return d.getUTCFullYear() === y && (d.getUTCMonth() + 1) === m;
-    };
-
     if (payFilterPartner) arr = arr.filter(p => p.partnerId === payFilterPartner);
-    if (payFilterMonth) {
-      arr = arr.filter(p => {
-        const wk = p.week || {};
-        const start = wk.start || p.weekStart;
-        return (start && isSameYYYYMM(start, payFilterMonth)) ||
-               (!start && (isSameYYYYMM(p.periodFrom, payFilterMonth) || isSameYYYYMM(p.periodTo, payFilterMonth)));
-      });
-    }
-    if (payFilterWeek) arr = arr.filter(p => (p.week?.key || p.weekKey) === payFilterWeek);
+    if (payFilterMonth)   arr = arr.filter(p => paymentIntersectsMonth(p, payFilterMonth));
+    if (payFilterWeek)    arr = arr.filter(p => (p.week?.key || p.weekKey) === payFilterWeek);
 
     const start = (payPage - 1) * payPageSize;
     return arr.slice(start, start + payPageSize);
@@ -740,6 +742,7 @@ const Payments = () => {
     if (!p) return { status: 'not linked', payment: null };
     return { status: mapPaymentToServiceStatus(p.status), payment: p };
   };
+
   /** ===================== Render ===================== */
   const currentPartnerName = selectedPartner
     ? (partnersList.find(p => p.id === selectedPartner)?.name)
