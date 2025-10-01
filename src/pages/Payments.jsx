@@ -14,6 +14,118 @@ import { getServicesPayStatus } from "../api/payments";
 
 const DEBUG_PAYSTATUS = false;
 
+/** ===================== FUSO/SEMANA DO NEGÓCIO ===================== **
+ *  Regras:
+ *  - Fuso oficial: America/New_York
+ *  - Semana de pagamento: Quarta 00:00 → Terça 23:59:59 (no fuso do negócio)
+ *  - Toda conversão/label é feita considerando o fuso do negócio,
+ *    evitando “um dia a menos” para quem está em outros fusos.
+ */
+const BUSINESS_TZ = 'America/New_York';
+const BUSINESS_WEEK_START_DOW = 3; // 0=Dom, 1=Seg, 2=Ter, 3=Qua
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Constrói uma data UTC que representa o horário local do TZ fornecido
+function toZonedDate(input, timeZone = BUSINESS_TZ) {
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return new Date(NaN);
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = fmt.formatToParts(d).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+  const y = +parts.year, m = +parts.month, day = +parts.day;
+  const hh = +parts.hour, mm = +parts.minute, ss = +parts.second;
+  return new Date(Date.UTC(y, m - 1, day, hh, mm, ss, 0));
+}
+
+function startOfDayInTZ(input, timeZone = BUSINESS_TZ) {
+  const z = toZonedDate(input, timeZone);
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const parts = fmt.formatToParts(z).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+  return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day, 0, 0, 0, 0));
+}
+function endOfDayInTZ(input, timeZone = BUSINESS_TZ) {
+  const s = startOfDayInTZ(input, timeZone);
+  return new Date(s.getTime() + DAY_MS - 1);
+}
+function addDaysUTC(date, days) {
+  const d = new Date(date.getTime());
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+// Início da semana de negócio (Quarta 00:00 no TZ) e fim (Terça 23:59:59)
+function startOfBusinessWeekInTZ(input, timeZone = BUSINESS_TZ, weekStartDow = BUSINESS_WEEK_START_DOW) {
+  const sod = startOfDayInTZ(input, timeZone);
+  const dow = sod.getUTCDay(); // 0..6 (UTC, mas já mapeado p/ 00:00 local)
+  const delta = ((dow - weekStartDow + 7) % 7);
+  return addDaysUTC(sod, -delta);
+}
+function endOfBusinessWeekInTZ(input, timeZone = BUSINESS_TZ) {
+  const s = startOfBusinessWeekInTZ(input, timeZone);
+  return endOfDayInTZ(addDaysUTC(s, 6), timeZone);
+}
+
+function isoDateInBusinessTZ(input) {
+  const s = startOfDayInTZ(input, BUSINESS_TZ);
+  const y = s.getUTCFullYear();
+  const m = String(s.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(s.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+function formatDateTZ(input, opts) {
+  const d = input instanceof Date ? input : new Date(input);
+  const f = new Intl.DateTimeFormat('en-US', { timeZone: BUSINESS_TZ, year: 'numeric', month: 'short', day: '2-digit', ...(opts || {}) });
+  return f.format(d);
+}
+
+// Semana de pagamento (Quarta→Terça) para uma referência
+function getPaymentWeekTZ(date = new Date()) {
+  const start = startOfBusinessWeekInTZ(date, BUSINESS_TZ);
+  const end = endOfBusinessWeekInTZ(date, BUSINESS_TZ);
+  // weekKey compatível (ano/semana baseada no início da semana, em UTC)
+  const y = start.getUTCFullYear();
+  const jan1UTC = new Date(Date.UTC(y, 0, 1));
+  const diffDays = Math.floor((start - jan1UTC) / DAY_MS);
+  const wk = Math.ceil((diffDays + jan1UTC.getUTCDay() + 1) / 7);
+  const key = `${y}-W${String(wk).padStart(2, '0')}`;
+  return { start, end, key };
+}
+function build5WeeksTZ(centerDate) {
+  const center = getPaymentWeekTZ(centerDate).start;
+  const list = [];
+  for (let i = -2; i <= 2; i++) {
+    const ref = addDaysUTC(center, i * 7);
+    const w = getPaymentWeekTZ(ref);
+    list.push(w);
+  }
+  return list;
+}
+
+// Filtro por intervalo usando limites do dia no fuso do negócio
+function withinTZ(dateIso, fromIso, toIso) {
+  const t = toZonedDate(dateIso, BUSINESS_TZ).getTime();
+  const f = fromIso ? startOfDayInTZ(fromIso, BUSINESS_TZ).getTime() : -Infinity;
+  const tt = toIso ? endOfDayInTZ(toIso, BUSINESS_TZ).getTime() : Infinity;
+  return t >= f && t <= tt;
+}
+const formatDate = (iso) => (iso ? formatDateTZ(iso) : '—');
+const formatCurrency = (n) => `$${Number(n || 0).toFixed(2)}`;
+const uuid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const arraysEqualAsSets = (a = [], b = []) => {
+  if (a.length !== b.length) return false;
+  const sa = new Set(a.map(String));
+  for (const x of b) if (!sa.has(String(x))) return false;
+  return true;
+};
+const fmtApiDateTZ = (d) => (d ? isoDateInBusinessTZ(d) : '');
+const getErrorMessage = (e, fb = 'Unexpected error') =>
+  e?.response?.data?.message || e?.response?.data?.error || e?.data?.message || e?.message || fb;
+
 /** ===================== Tipos (para reidratar) ===================== */
 const serviceTypes = [
   { id: 'IN_PERSON_TOUR', name: 'In-Person Tour', icon: Building, category: 'variable', basePrice: 150 },
@@ -32,53 +144,6 @@ const serviceTypes = [
   { id: 'TIP',            name: 'Tip',                            icon: Baby,     category: 'hourly', basePrice: 35  },
   { id: 'ASSISTANCE',     name: 'Assistance',                     icon: MapPin,   category: 'hourly', basePrice: 35  },
 ];
-
-/** ===================== Helpers gerais ===================== */
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function getPaymentWeek(date = new Date()) {
-  const d = new Date(date);
-  const dow = d.getDay();         // 0=Dom ... 3=Qua
-  const toWed = (dow >= 3) ? (dow - 3) : (dow + 4);
-  const start = new Date(d); start.setDate(d.getDate() - toWed); start.setHours(0,0,0,0);
-  const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
-  return { start, end, key: weekKey(start) };
-}
-function weekKey(startDate) {
-  const y = startDate.getFullYear();
-  const jan1 = new Date(y,0,1);
-  const diffDays = Math.floor((startDate - jan1)/DAY_MS);
-  const wk = Math.ceil((diffDays + jan1.getDay() + 1)/7);
-  return `${y}-W${String(wk).padStart(2,'0')}`;
-}
-function build5Weeks(centerDate) {
-  const center = getPaymentWeek(centerDate).start;
-  const list = [];
-  for (let i = -2; i <= 2; i++) {
-    const s = new Date(center); s.setDate(s.getDate() + (i*7));
-    const w = getPaymentWeek(s);
-    list.push(w);
-  }
-  return list;
-}
-function within(dateIso, fromIso, toIso) {
-  const t = new Date(dateIso).getTime();
-  const f = fromIso ? new Date(fromIso).getTime() : -Infinity;
-  const tt = toIso ? new Date(toIso).getTime() : Infinity;
-  return t >= f && t <= tt;
-}
-const formatDate = (iso) => (iso ? new Date(iso).toLocaleDateString() : '—');
-const formatCurrency = (n) => `$${Number(n || 0).toFixed(2)}`;
-const uuid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-const arraysEqualAsSets = (a = [], b = []) => {
-  if (a.length !== b.length) return false;
-  const sa = new Set(a.map(String));
-  for (const x of b) if (!sa.has(String(x))) return false;
-  return true;
-};
-const fmtApiDate = (d) => { if (!d) return ''; const dd = new Date(d); return isNaN(dd) ? '' : dd.toISOString().slice(0, 10); };
-const getErrorMessage = (e, fb = 'Unexpected error') =>
-  e?.response?.data?.message || e?.response?.data?.error || e?.data?.message || e?.message || fb;
 
 /** ===================== Status (Payments) ===================== */
 const STATUS_META = {
@@ -180,16 +245,38 @@ async function fetchAllPages(path, { pageSize = 200, params = {} } = {}) {
   }
   return acc;
 }
+
 async function fetchAllServices() {
-  const raw = await fetchAllPages('/services', { pageSize: 200 });
-  return raw.map(item => {
-    const st = (item.serviceType && item.serviceType.id)
-      ? item.serviceType
-      : serviceTypes.find(t => t.id === (item.serviceTypeId ?? item.serviceType)) || (item.serviceType ? { id: item.serviceType, name: item.serviceType } : null);
-    const partner = (item.partner && item.partner.id) ? item.partner : (item.partnerId ? { id: item.partnerId } : item.partner || null);
-    return { ...item, id: item._id || item.id, serviceType: st, partner };
+  // pede ordenação por criação DESC ao backend
+  const raw = await fetchAllPages('/services', {
+    pageSize: 200,
+    params: { sortBy: 'createdAt', sortDir: 'desc' },
+  });
+
+  // mantém createdAt no front para reforçar a ordenação e fallback
+  return (Array.isArray(raw) ? raw : []).map((item) => {
+    const st =
+      (item.serviceType && item.serviceType.id)
+        ? item.serviceType
+        : serviceTypes.find(t => t.id === (item.serviceTypeId ?? item.serviceType))
+          || (item.serviceType ? { id: item.serviceType, name: item.serviceType } : null);
+
+    const partner =
+      (item.partner && item.partner.id) ? item.partner
+        : (item.partnerId ? { id: item.partnerId } : item.partner || null);
+
+    const createdAt = item.createdAt || item.created_at || null;
+
+    return {
+      ...item,
+      id: item._id || item.id,
+      createdAt,
+      serviceType: st,
+      partner,
+    };
   });
 }
+
 async function fetchAllPayments() {
   const raw = await fetchAllPages('/payments', { pageSize: 200 });
   return raw.map(p => ({
@@ -199,7 +286,6 @@ async function fetchAllPayments() {
     partnerName: p.partnerName || p.partner?.name || p.partner?.fullName || ''
   }));
 }
-
 /** ===================== Componente ===================== */
 const Payments = () => {
   const [loading, setLoading] = useState(false);
@@ -214,12 +300,12 @@ const Payments = () => {
   /** ===== Filtros (Services) */
   const [selectedPartner, setSelectedPartner] = useState('');
   const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateTo,   setDateTo]   = useState('');
   const [search, setSearch] = useState('');
 
-  /** Semana */
+  /** Semana (corrigida em TZ) */
   const [assignWeekKey, setAssignWeekKey] = useState('');
-  const [weekOptions, setWeekOptions] = useState(build5Weeks(new Date()));
+  const [weekOptions, setWeekOptions] = useState(build5WeeksTZ(new Date()));
 
   /** Catálogos */
   const [allServices, setAllServices] = useState([]);
@@ -277,28 +363,36 @@ const Payments = () => {
     return map;
   }, [allServices]);
 
+  // ⚠️ Ordena por criação DESC (fallback para serviceDate), garantindo "mais recentes em cima"
   const filteredServices = useMemo(() => {
     let arr = Array.isArray(allServices) ? [...allServices] : [];
     if (selectedPartner) arr = arr.filter(s => (s.partner?.id || s.partnerId) === selectedPartner);
-    if (dateFrom || dateTo) arr = arr.filter(s => within(s.serviceDate, dateFrom, dateTo));
+    if (dateFrom || dateTo) arr = arr.filter(s => withinTZ(s.serviceDate, dateFrom, dateTo));
     if ((search || '').trim()) {
       const q = search.trim().toLowerCase();
       arr = arr.filter(s => (`${s.firstName || ''} ${s.lastName || ''}`).toLowerCase().includes(q));
     }
-    arr.sort((a,b) => new Date(a.serviceDate) - new Date(b.serviceDate));
+
+    // DESC: b - a
+    arr.sort((a, b) => {
+      const aT = new Date(a.createdAt || a.created_at || a.serviceDate || 0).getTime();
+      const bT = new Date(b.createdAt || b.created_at || b.serviceDate || 0).getTime();
+      return bT - aT;
+    });
+
     return arr;
   }, [allServices, selectedPartner, dateFrom, dateTo, search]);
 
-  /** ===== Semanas sugeridas (para gerar pagamento) */
+  /** ===== Semanas sugeridas (para gerar pagamento) — TZ-safe */
   useEffect(() => {
     let ref = new Date();
     const setSel = new Set(selectedServiceIds.map(String));
     const chosen = filteredServices.filter(s => setSel.has(String(s.id)));
     if (chosen.length) {
-      const max = chosen.reduce((m, s) => Math.max(m, new Date(s.serviceDate).getTime()), 0);
+      const max = chosen.reduce((m, s) => Math.max(m, toZonedDate(s.serviceDate, BUSINESS_TZ).getTime()), 0);
       ref = new Date(max);
     }
-    const opts = build5Weeks(ref);
+    const opts = build5WeeksTZ(ref);
     setWeekOptions(opts);
     if (!assignWeekKey || !opts.find(o => o.key === assignWeekKey)) {
       setAssignWeekKey(opts[2]?.key || opts[0]?.key || '');
@@ -389,10 +483,11 @@ const Payments = () => {
         return;
       }
 
+      // Semana selecionada (TZ-safe)
       const pickedWeek = weekOptions.find(w => w.key === assignWeekKey);
       const weekKeySel = assignWeekKey;
-      const weekStartISO = pickedWeek ? new Date(pickedWeek.start).toISOString() : undefined;
-      const weekEndISO   = pickedWeek ? new Date(pickedWeek.end).toISOString()   : undefined;
+      const weekStartISO = pickedWeek ? startOfBusinessWeekInTZ(pickedWeek.start, BUSINESS_TZ).toISOString() : undefined;
+      const weekEndISO   = pickedWeek ? endOfBusinessWeekInTZ(pickedWeek.end, BUSINESS_TZ).toISOString()   : undefined;
 
       const payload = clean({
         partnerId,
@@ -513,13 +608,13 @@ const Payments = () => {
     }
   };
 
-  // ====== Add service (picker)
+  // ====== Add service (picker) — datas em TZ da empresa
   const openAddService = async (p) => {
     try {
       const start = p.week?.start || p.weekStart || null;
       const end   = p.week?.end   || p.weekEnd   || null;
-      const dateFrom = fmtApiDate(start);
-      const dateTo   = fmtApiDate(end);
+      const dateFrom = fmtApiDateTZ(start);
+      const dateTo   = fmtApiDateTZ(end);
       setAddPicker({ paymentId: p.id, items: [], selected: new Set(), loading: true });
 
       const res = await api.get('/payments/eligible', { params: {
@@ -577,9 +672,9 @@ const Payments = () => {
 
     const isSameYYYYMM = (iso, ym) => {
       if (!iso || !ym) return false;
-      const d = new Date(iso);
+      const d = toZonedDate(iso, BUSINESS_TZ);
       const [y, m] = ym.split('-').map(Number);
-      return d.getFullYear() === y && (d.getMonth() + 1) === m;
+      return d.getUTCFullYear() === y && (d.getUTCMonth() + 1) === m;
     };
 
     if (payFilterPartner) arr = arr.filter(p => p.partnerId === payFilterPartner);
@@ -626,26 +721,25 @@ const Payments = () => {
 
   /** ===== Resolver combinado: rota + fallback local ===== */
   const resolveServicePayInfo = (serviceId) => {
-  const id = String(serviceId);
+    const id = String(serviceId);
 
-  // 1) Preferência: rota /paystatus
-  const fromApi = servicePayStatus.get(id);
-  if (fromApi) {
-    const st = normalize(fromApi.status);
-    if (!fromApi.paymentId || st === 'NOT_LINKED') {
-      return { status: 'not linked', payment: null };
+    // 1) Preferência: rota /paystatus
+    const fromApi = servicePayStatus.get(id);
+    if (fromApi) {
+      const st = normalize(fromApi.status);
+      if (!fromApi.paymentId || st === 'NOT_LINKED') {
+        return { status: 'not linked', payment: null };
+      }
+      const p = payments.find(pp => String(pp.id || pp._id) === String(fromApi.paymentId)) || null;
+      const status = mapPaymentToServiceStatus(p?.status ?? fromApi.status);
+      return { status, payment: p };
     }
-    const p = payments.find(pp => String(pp.id || pp._id) === String(fromApi.paymentId)) || null;
-    const status = mapPaymentToServiceStatus(p?.status ?? fromApi.status);
-    return { status, payment: p };
-  }
 
-  // 2) Fallback: olhar os payments carregados
-  const p = paymentIndexByServiceId.get(id) || null;
-  if (!p) return { status: 'not linked', payment: null };
-  return { status: mapPaymentToServiceStatus(p.status), payment: p };
-};
-
+    // 2) Fallback: olhar os payments carregados
+    const p = paymentIndexByServiceId.get(id) || null;
+    if (!p) return { status: 'not linked', payment: null };
+    return { status: mapPaymentToServiceStatus(p.status), payment: p };
+  };
   /** ===================== Render ===================== */
   const currentPartnerName = selectedPartner
     ? (partnersList.find(p => p.id === selectedPartner)?.name)
@@ -686,8 +780,6 @@ const Payments = () => {
         </div>
       )}
 
-
-
       {/* HEADER */}
       <div className="pay-header">
         <div className="pay-title">
@@ -700,48 +792,47 @@ const Payments = () => {
       </div>
 
       {/* FILTERS + ACTIONS (SERVICES) */}
-   <div className="filters-card">
-  <div className="filters-row">{/* ⛔️ sem inline style aqui */}
-    <div className="filter">
-      <label><Users size={13}/> Partner</label>
-      <select
-        value={selectedPartner}
-        onChange={(e) => { setSelectedPartner(e.target.value); setSelectedServiceIds([]); }}
-      >
-        <option value="">All</option>
-        {partnersList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
-    </div>
+      <div className="filters-card">
+        <div className="filters-row">
+          <div className="filter">
+            <label><Users size={13}/> Partner</label>
+            <select
+              value={selectedPartner}
+              onChange={(e) => { setSelectedPartner(e.target.value); setSelectedServiceIds([]); }}
+            >
+              <option value="">All</option>
+              {partnersList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
 
-    <div className="filter">
-      <label><Calendar size={13}/> Date from</label>
-      <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-    </div>
+          <div className="filter">
+            <label><Calendar size={13}/> Date from</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          </div>
 
-    <div className="filter">
-      <label><Calendar size={13}/> Date to</label>
-      <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-    </div>
+          <div className="filter">
+            <label><Calendar size={13}/> Date to</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
 
-    <div className="filter filter--search">
-      <label><Filter size={13}/> Search client</label>
-      <input type="text" placeholder="Type client name..." value={search} onChange={e => setSearch(e.target.value)} />
-    </div>
+          <div className="filter filter--search">
+            <label><Filter size={13}/> Search client</label>
+            <input type="text" placeholder="Type client name..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
 
-    {/* Grupo de ações alinhado à direita */}
-    <div className="filters-actions">
-      <button className="btn btn--outline btn--sm" onClick={refreshAll} title="Refresh data">
-        <RefreshCw size={16}/> Refresh
-      </button>
-      <button
-        className="btn btn--outline btn--sm"
-        onClick={() => { setSelectedPartner(''); setDateFrom(''); setDateTo(''); setSearch(''); setSelectedServiceIds([]); }}
-        title="Clear filters"
-      >
-        Clear
-      </button>
-    </div>
-  </div>
+          <div className="filters-actions">
+            <button className="btn btn--outline btn--sm" onClick={refreshAll} title="Refresh data">
+              <RefreshCw size={16}/> Refresh
+            </button>
+            <button
+              className="btn btn--outline btn--sm"
+              onClick={() => { setSelectedPartner(''); setDateFrom(''); setDateTo(''); setSearch(''); setSelectedServiceIds([]); }}
+              title="Clear filters"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
 
         <div className="actions-row" style={{ flexWrap: 'wrap' }}>
           <div className="total-pill">
@@ -753,7 +844,7 @@ const Payments = () => {
             <select value={assignWeekKey} onChange={(e) => setAssignWeekKey(e.target.value)}>
               {weekOptions.map(w => (
                 <option key={w.key} value={w.key}>
-                  {formatDate(w.start)} – {formatDate(w.end)} ({w.key})
+                  {formatDateTZ(w.start)} – {formatDateTZ(w.end)} ({w.key})
                 </option>
               ))}
             </select>
@@ -828,15 +919,15 @@ const Payments = () => {
                 '—';
               const observation = s.observation || s.observations || s.note || s.notes || s.comment || s.comments || '';
 
-             const info = resolveServicePayInfo(s.id);
-                const val = info.status; // 'not linked' | 'pending' | 'shared' | 'declined' | 'approved' | 'paid'
+              const info = resolveServicePayInfo(s.id);
+              const val = info.status;
 
-                const assignedStart = info.payment?.week?.start || info.payment?.weekStart || null;
-                const assignedEnd   = info.payment?.week?.end   || info.payment?.weekEnd   || null;
-                const assignedKey   = info.payment?.week?.key   || info.payment?.weekKey   || '';
-                const assignedWeekText = (assignedStart && assignedEnd)
-                  ? `${formatDate(assignedStart)} – ${formatDate(assignedEnd)}${assignedKey ? ` (${assignedKey})` : ''}`
-                  : '';
+              const assignedStart = info.payment?.week?.start || info.payment?.weekStart || null;
+              const assignedEnd   = info.payment?.week?.end   || info.payment?.weekEnd   || null;
+              const assignedKey   = info.payment?.week?.key   || info.payment?.weekKey   || '';
+              const assignedWeekText = (assignedStart && assignedEnd)
+                ? `${formatDate(assignedStart)} – ${formatDate(assignedEnd)}${assignedKey ? ` (${assignedKey})` : ''}`
+                : '';
 
               return (
                 <div key={String(s.id)} className="tr">
@@ -856,19 +947,19 @@ const Payments = () => {
                   <div className="td">{s.guests ?? '—'}</div>
                   <div className="td td--obs">
                     <div className="obs-grid">{observation || '—'}</div>
-                  </div>   
-               <div className="td right">{formatCurrency(s.finalValue)}</div>
+                  </div>
+                  <div className="td right">{formatCurrency(s.finalValue)}</div>
 
                   <div className="td center">
                     <ServicePayStatus value={val} />
                   </div>
-              <div className="td center">
-                {info.payment ? (
-                  <span className="wk-chip" title={assignedWeekText}>
-                    <Calendar size={12}/> {assignedWeekText}
-                  </span>
-                ) : '—'}
-              </div>
+                  <div className="td center">
+                    {info.payment ? (
+                      <span className="wk-chip" title={assignedWeekText}>
+                        <Calendar size={12}/> {assignedWeekText}
+                      </span>
+                    ) : '—'}
+                  </div>
                 </div>
               );
             })}
@@ -907,7 +998,7 @@ const Payments = () => {
             <span className="muted"><Info size={14}/> From API</span>
           </div>
 
-        {/* Filtros (PARTNER / MÊS / SEMANA) */}
+          {/* Filtros (PARTNER / MÊS / SEMANA) */}
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
             <div className="filter" style={{ minWidth: 220 }}>
               <label><Users size={13}/> Partner</label>
@@ -942,9 +1033,9 @@ const Payments = () => {
                 {(() => {
                   const isSameYYYYMM = (iso, ym) => {
                     if (!iso || !ym) return false;
-                    const d = new Date(iso);
+                    const d = toZonedDate(iso, BUSINESS_TZ);
                     const [y, m] = ym.split('-').map(Number);
-                    return d.getFullYear() === y && (d.getMonth() + 1) === m;
+                    return d.getUTCFullYear() === y && (d.getUTCMonth() + 1) === m;
                   };
                   const set = new Map();
                   payments.forEach(p => {
@@ -957,7 +1048,7 @@ const Payments = () => {
                     }
                   });
                   return Array.from(set.values())
-                    .sort((a, b) => new Date(a.start) - new Date(b.start))
+                    .sort((a, b) => toZonedDate(a.start, BUSINESS_TZ) - toZonedDate(b.start, BUSINESS_TZ))
                     .map(w => (
                       <option key={w.key} value={w.key}>
                         {formatDate(w.start)} – {formatDate(w.end)} ({w.key})
@@ -1222,7 +1313,7 @@ const Payments = () => {
                           <div className="notes-list">
                             {[...p.notesLog].reverse().map(n => (
                               <div key={n.id || n._id} className="note-item">
-                                <div className="note-meta">{new Date(n.at).toLocaleString()}</div>
+                                <div className="note-meta">{formatDateTZ(n.at, { hour: '2-digit', minute: '2-digit' })}</div>
                                 <div className="note-text">{n.text}</div>
                               </div>
                             ))}

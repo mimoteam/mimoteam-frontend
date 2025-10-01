@@ -72,6 +72,78 @@ const IDLE_LIMIT_MS = 30 * 60 * 1000;    // 30 min
 const WARN_BEFORE_MS = 5 * 60 * 1000;    // avisa 5 min antes
 const REFRESH_EVERY_MS = 25 * 60 * 1000; // renova access ~a cada 25 min
 
+/* ********************************************************************
+ *  FUSO & SEMANA DO NEGÓCIO (America/New_York, semana Quarta→Terça)
+ *  — Sem bibliotecas externas
+ ******************************************************************** */
+const BUSINESS_TZ = 'America/New_York';
+const BUSINESS_WEEK_START_DOW = 3; // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
+
+// Constrói um Date "no fuso" desejado (representado em UTC) a partir de um Date/number/string.
+// A técnica usa Intl.DateTimeFormat(..., { timeZone }) + formatToParts.
+function toZonedDate(input, timeZone = BUSINESS_TZ) {
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return new Date(NaN);
+
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = fmt.formatToParts(d).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+  // parts: { year:'2025', month:'09', day:'26', hour:'13', minute:'05', second:'09' ... }
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  const second = Number(parts.second);
+  // Cria UTC equivalente à meia-noite/hora local do fuso:
+  return new Date(Date.UTC(year, month - 1, day, hour, minute, second, 0));
+}
+
+function startOfDayInTZ(input, timeZone = BUSINESS_TZ) {
+  const z = toZonedDate(input, timeZone);
+  // z já é UTC correspondente ao horário local; zeramos para 00:00 local
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const parts = fmt.formatToParts(z).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+  return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), 0, 0, 0, 0));
+}
+
+function addDaysUTC(date, days) {
+  const d = new Date(date.getTime());
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+// Retorna o início da semana do NEGÓCIO (quarta-feira 00:00 no BUSINESS_TZ) para uma data
+function startOfBusinessWeekInTZ(input, timeZone = BUSINESS_TZ, weekStartDow = BUSINESS_WEEK_START_DOW) {
+  const sod = startOfDayInTZ(input, timeZone);
+  const dow = sod.getUTCDay(); // 0..6 relativo ao UTC, porém sod representa 00:00 do TZ já mapeado para UTC
+  const delta = ( (dow - weekStartDow + 7) % 7 );
+  return addDaysUTC(sod, -delta);
+}
+
+function toISODateUTC(d) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+// Dado um input, retorna { startISO, endISO } da semana (Qua→Ter) no BUSINESS_TZ
+function weekRangeISO(input, timeZone = BUSINESS_TZ) {
+  const start = startOfBusinessWeekInTZ(input, timeZone);
+  const end = addDaysUTC(start, 6);
+  return { startISO: toISODateUTC(start), endISO: toISODateUTC(end) };
+}
+
+// Normaliza uma data qualquer para o início ISO (YYYY-MM-DD) da semana de negócio.
+function normalizeWeekStartISO(input, timeZone = BUSINESS_TZ) {
+  return weekRangeISO(input, timeZone).startISO;
+}
+
 /* ====== Helpers WebAuthn (sem libs externas) ====== */
 const b64urlToArrayBuffer = (b64url) => {
   if (!b64url) return new ArrayBuffer(0);
@@ -79,7 +151,7 @@ const b64urlToArrayBuffer = (b64url) => {
   const base64 = (b64url.replace(/-/g, '+').replace(/_/g, '/') + pad);
   const str = atob(base64);
   const bytes = new Uint8Array(str.length);
-  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = str.charCodeAt(i);
   return bytes.buffer;
 };
 const arrayBufferToB64url = (buf) => {
@@ -91,16 +163,13 @@ const arrayBufferToB64url = (buf) => {
 };
 
 const toCreationOptions = (raw) => {
-  const o = raw?.publicKey ?? raw; // aceita {publicKey:{...}} ou direto
+  const o = raw?.publicKey ?? raw;
   if (!o) return null;
   const out = { ...o };
   out.challenge = b64urlToArrayBuffer(o.challenge);
   if (o.user?.id) out.user = { ...o.user, id: b64urlToArrayBuffer(o.user.id) };
   if (Array.isArray(o.excludeCredentials)) {
-    out.excludeCredentials = o.excludeCredentials.map((c) => ({
-      ...c,
-      id: b64urlToArrayBuffer(c.id),
-    }));
+    out.excludeCredentials = o.excludeCredentials.map((c) => ({ ...c, id: b64urlToArrayBuffer(c.id) }));
   }
   if (o.attestation === undefined) out.attestation = 'none';
   return { publicKey: out };
@@ -112,10 +181,7 @@ const toRequestOptions = (raw) => {
   const out = { ...o };
   out.challenge = b64urlToArrayBuffer(o.challenge);
   if (Array.isArray(o.allowCredentials)) {
-    out.allowCredentials = o.allowCredentials.map((c) => ({
-      ...c,
-      id: b64urlToArrayBuffer(c.id),
-    }));
+    out.allowCredentials = o.allowCredentials.map((c) => ({ ...c, id: b64urlToArrayBuffer(c.id) }));
   }
   return { publicKey: out };
 };
@@ -144,7 +210,6 @@ const credToJSON_Assertion = (cred) => ({
   },
   clientExtensionResults: cred.getClientExtensionResults?.() ?? {},
 });
-
 function ensureStableId(u) {
   if (u && u.id) return String(u.id);
   const base = (u?.email || u?.login || '').toString().trim();
@@ -208,6 +273,8 @@ function migrateCalendarForUser(userId) {
   if (!sourceObj) return;
   try { localStorage.setItem(destKey, JSON.stringify(sourceObj)); } catch {}
 }
+
+// ⚠️ CORREÇÃO DE FUSO/SEMANA: normaliza o weekStart para a Quarta (BUSINESS_TZ)
 function migratePaymentsForUser(user) {
   if (!user) return;
   const id = ensureStableId(user);
@@ -223,8 +290,9 @@ function migratePaymentsForUser(user) {
     const partnerName = (p.partnerName || '').trim().toLowerCase();
     const status = String(p.status || '').trim().toUpperCase();
 
-    const hasPeriod = p.weekStart || p.periodFrom || p.periodTo;
-    const weekStart = p.weekStart || (!hasPeriod && p.createdAt ? p.createdAt : p.weekStart);
+    // Normaliza weekStart sempre no fuso da empresa, começo na quarta
+    const baseDate = p.weekStart || p.periodFrom || p.createdAt || Date.now();
+    const weekStartISO = normalizeWeekStartISO(baseDate, BUSINESS_TZ);
 
     let partnerId = p.partnerId;
     if (!partnerId || partnerLogin === login || (partnerName && partnerName === full)) {
@@ -234,10 +302,19 @@ function migratePaymentsForUser(user) {
     const mutated =
       partnerId !== p.partnerId ||
       status !== p.status ||
-      weekStart !== p.weekStart;
+      p.weekStart !== weekStartISO ||
+      p.weekKey !== `${weekStartISO}→${weekRangeISO(weekStartISO).endISO}`;
+
+    const patched = {
+      ...p,
+      partnerId,
+      status,
+      weekStart: weekStartISO,
+      weekKey: `${weekStartISO}→${weekRangeISO(weekStartISO).endISO}`,
+    };
 
     if (mutated) changed = true;
-    return { ...p, partnerId, status, weekStart };
+    return patched;
   });
 
   if (changed) {
@@ -276,15 +353,20 @@ function NotificationsBridge({ currentUserId }) {
       if (!id || seenNewPaymentsRef.current.has(id)) return;
       const status = String(p?.status || '').toUpperCase();
 
+      // Garante que a semana mostrada está normalizada ao fuso do negócio
+      const wkStartISO = normalizeWeekStartISO(p.weekStart || p.createdAt || Date.now(), BUSINESS_TZ);
+      const wk = weekRangeISO(wkStartISO);
+      const wkLabel = `${wk.startISO} → ${wk.endISO}`;
+
       if (AWAITING.has(status)) {
         addNotification({
           channel: 'finance',
           kind: 'payment',
           title: 'New payment awaiting approval',
-          message: `${partnerNameOf(p)} • ${fmtMoney(p.total)} • week ${p.weekKey || ''}`,
+          message: `${partnerNameOf(p)} • ${fmtMoney(p.total)} • week ${wkLabel}`,
           pageId: 'payments',
           timestamp: now,
-          meta: { paymentId: p.id, status: p.status, weekStart: p.weekStart || p.createdAt }
+          meta: { paymentId: p.id, status: p.status, weekStart: wk.startISO }
         });
       }
 
@@ -294,7 +376,7 @@ function NotificationsBridge({ currentUserId }) {
           channel: `partner:${pid}`,
           kind: 'payment',
           title: 'New payment to approve',
-          message: `You have a new payment to review • ${fmtMoney(p.total)}`,
+          message: `You have a new payment to review • ${fmtMoney(p.total)} • ${wkLabel}`,
           pageId: 'partner_wallet',
           timestamp: now,
           meta: { paymentId: p.id, status: p.status }
@@ -724,7 +806,6 @@ function App() {
       return next;
     });
   }, []);
-
   // ====== LOGIN SCREEN (global) ======
   if (currentPage === 'login') {
     return (
@@ -797,6 +878,7 @@ function App() {
       </div>
     );
   }
+
   const appLayoutClass = `app-layout ${isPartner && isMobileUI ? 'partner-mobile' : ''}`;
   const sidebarClass = (() => {
     const cls = ['sidebar'];
@@ -927,7 +1009,7 @@ function App() {
                       <div className="sidebar-footer">
                         <div className="sidebar-footer-content">
                           <p className="footer-text">Mimo Team Portal</p>
-                          <p className="footer-version">v2.0.1</p>
+                          <p className="footer-version">v2.0.2</p>
                         </div>
                       </div>
                     )}
@@ -1013,4 +1095,5 @@ function App() {
     </NotificationsProvider>
   );
 }
+
 export default App;

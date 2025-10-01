@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ChevronRight, ChevronDown, Users,
-  Calendar as CalendarIcon, Flag, Trash2, Image as ImageIcon,
-  Filter, X
+  Users, Calendar as CalendarIcon, Flag, Trash2,
+  Image as ImageIcon, Filter, X
 } from "lucide-react";
 import { listLanes, deleteLaneReceipt, deleteLane } from "../api/lightninglanes";
 import { toAbsoluteUrl } from "../api/http";
@@ -23,7 +22,6 @@ const PMAP = new Map([
 /* ====== Helpers ====== */
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 const ymd = (d) => { try { return new Date(d).toISOString().slice(0,10); } catch { return String(d||""); } };
-// Só adiciona cache-buster se a URL não tiver query
 const withCacheBust = (u, updatedAt) => (/\?/.test(u) ? u : `${u}?v=${updatedAt ? new Date(updatedAt).getTime() : Date.now()}`);
 
 function cleanName(s){ return String(s||"").normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().replace(/[^a-z\s]/g," ").replace(/\s+/g," ").trim(); }
@@ -97,9 +95,8 @@ export default function LightningLanes(){
   const [loading,setLoading]=useState(false);
   const pages = Math.max(1, Math.ceil(total/PAGE_SIZE));
 
-  // expand
-  const [open,setOpen]=useState(()=>new Set());
-  const toggleOpen=(id)=>setOpen(prev=>{ const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
+  // seleção para o painel
+  const [selId,setSelId]=useState(null);
 
   // filtros
   const [fClient,setFClient]=useState("");
@@ -142,12 +139,28 @@ export default function LightningLanes(){
 
   const grouped = useMemo(()=>groupByClient(filtered),[filtered]);
 
+  // garante algo selecionado
+  useEffect(()=>{
+    if(!selId && grouped.length){ setSelId(grouped[0].id); }
+  },[grouped, selId]);
+
+  const selected = useMemo(
+    ()=> grouped.find(g => g.id === selId) || null,
+    [grouped, selId]
+  );
+
+  const pagesCount = pages;
   const goPrev=()=>{ if(page>1) refresh(page-1); };
-  const goNext=()=>{ if(page<pages) refresh(page+1); };
+  const goNext=()=>{ if(page<pagesCount) refresh(page+1); };
 
   const onRemoveReceipt=async (laneId,url)=>{
     try{
       await deleteLaneReceipt(laneId,url);
+      if(selected){
+        selected.items.forEach(it => {
+          if(it._id===laneId) it.receipts = (it.receipts||[]).filter(u=>u!==url);
+        });
+      }
       setRows(prev=>prev.map(it=>it._id===laneId?{...it,receipts:(it.receipts||[]).filter(u=>u!==url)}:it));
     }catch{}
   };
@@ -157,10 +170,18 @@ export default function LightningLanes(){
       await deleteLane(laneId);
       setRows(prev=>prev.filter(it=>it._id!==laneId));
       setTotal(t=>Math.max(0,t-1));
+      if(selId===laneId) setSelId(null);
     }catch{}
   };
 
   const clearFilters = () => { setFClient(""); setFPartner(""); setFFrom(""); setFTo(""); };
+
+  const selReceipts = useMemo(()=>{
+    if(!selected) return [];
+    return selected.items.flatMap(it =>
+      (it.receipts || []).map(url => ({ laneId: it._id, url, updatedAt: it.updatedAt }))
+    );
+  },[selected]);
 
   return (
     <div className="lln-page">
@@ -168,7 +189,7 @@ export default function LightningLanes(){
       <div className="page-title">
         <div className="page-meta">
           <span className="meta-pill">Total: {total}</span>
-          <span className="meta-pill">Page {page} / {pages}</span>
+          <span className="meta-pill">Page {page} / {pagesCount}</span>
         </div>
       </div>
 
@@ -198,111 +219,157 @@ export default function LightningLanes(){
         </div>
       </div>
 
-      {/* ===== Tabela ===== */}
-      <div className="lln-card">
-        {/* Cabeçalho — 10 colunas */}
-        <div className="lln-thead" role="row">
-          <div className="th client">Client Name</div>
-          <div className="th date">Visit Date</div>
-          <div className="th type">Type</div>
-          <div className="th method">Payment Method</div>
-          <div className="th last4">Last 4</div>
-          <div className="th amount">Amount</div>
-          <div className="th obs">Observation</div>
-          <div className="th by">Upload by</div>
-          <div className="th status">Status</div>
-          <div className="th actions">Actions</div>
+      {/* ===== Layout: tabela + painel ===== */}
+      <div className="lln-layout">
+        {/* ===== TABELA ===== */}
+        <div className="lln-card">
+          {/* Wrapper que ROLA header + body juntos */}
+          <div className="lln-table-scroll">
+            {/* Cabeçalho — 10 colunas */}
+            <div className="lln-thead" role="row">
+              <div className="th client">Client Name</div>
+              <div className="th date">Visit Date</div>
+              <div className="th type">Type</div>
+              <div className="th method">Payment Method</div>
+              <div className="th last4">Last 4</div>
+              <div className="th amount">Amount</div>
+              <div className="th obs">Observation</div>
+              <div className="th by">Upload by</div>
+              <div className="th status">Status</div>
+              <div className="th actions">Actions</div>
+            </div>
+
+            {/* Corpo */}
+            <div className="lln-tbody">
+              {loading ? (
+                <div className="lln-empty">Loading…</div>
+              ) : grouped.length===0 ? (
+                <div className="lln-empty">No data.</div>
+              ) : grouped.map(g=>{
+                const stat=statusInfo(g.items[0]||{});
+                const isSel = selId===g.id;
+                return (
+                  <div key={g.id} className={`lln-row ${isSel ? "selected":""}`}>
+                    {/* Linha principal — clique seleciona */}
+                    <div
+                      className="row-main clickable"
+                      onClick={()=>setSelId(g.id)}
+                      role="button"
+                      aria-pressed={isSel}
+                      title="Show details on the right"
+                    >
+                      <div className="cell client pill">
+                        <Users size={14} className="muted"/> <span className="strong">{g.client}</span>
+                      </div>
+                      <div className="cell date pill">
+                        <CalendarIcon size={14} className="muted"/> {ymd(g.latestDate)}
+                      </div>
+                      <div className="cell type pill">
+                        <Flag size={14} className="muted"/> {TYPES_MAP.get(g.latestType)||g.latestType||"—"}
+                      </div>
+                      <div className="cell method pill">{PMAP.get(g.method)||g.method||"—"}</div>
+                      <div className="cell last4 pill">{g.last4}</div>
+                      <div className="cell amount pill">{money(g.amountSum)}</div>
+                      <div className="cell obs pill">{g.observation || "—"}</div>
+                      <div className="cell by pill truncate">{titleCase(g.uploadedBy)}</div>
+                      <div className="cell status pill">
+                        <span className={`dot ${stat.cls}`} /> {stat.label}
+                      </div>
+                      <div className="cell actions">
+                        <button className="btn outline danger" onClick={(e)=>{ e.stopPropagation(); onDeleteLane(g.id); }}>
+                          <Trash2 size={16}/> Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* paginação (fora do scroll) */}
+          <div className="lln-pager">
+            <button className="btn outline" onClick={goPrev} disabled={page<=1}>Prev</button>
+            <span className="pageinfo">Page <strong>{page}</strong> of <strong>{pagesCount}</strong> • {total} items</span>
+            <button className="btn outline" onClick={goNext} disabled={page>=pagesCount}>Next</button>
+          </div>
         </div>
 
-        {/* Corpo */}
-        <div className="lln-tbody">
-          {loading ? (
-            <div className="lln-empty">Loading…</div>
-          ) : grouped.length===0 ? (
-            <div className="lln-empty">No data.</div>
-          ) : grouped.map(g=>{
-            const opened=open.has(g.id);
-            const stat=statusInfo(g.items[0]||{});
-
-            // Agrupa receipts do grupo
-            const receipts = g.items.flatMap(it =>
-              (it.receipts || []).map(url => ({ laneId: it._id, url, updatedAt: it.updatedAt }))
-            );
-
-            return (
-              <div key={g.id} className="lln-row">
-                {/* Linha principal — 10 colunas na mesma ordem do header */}
-                <div className="row-main">
-                  <div className="cell client pill">
-                    <Users size={14} className="muted"/> <span className="strong">{g.client}</span>
-                  </div>
-                  <div className="cell date pill">
-                    <CalendarIcon size={14} className="muted"/> {ymd(g.latestDate)}
-                  </div>
-                  <div className="cell type pill">
-                    <Flag size={14} className="muted"/> {TYPES_MAP.get(g.latestType)||g.latestType||"—"}
-                  </div>
-                  <div className="cell method pill">{PMAP.get(g.method)||g.method||"—"}</div>
-                  <div className="cell last4 pill">{g.last4}</div>
-                  <div className="cell amount pill">{money(g.amountSum)}</div>
-                  <div className="cell obs pill">{g.observation || "—"}</div>
-                  <div className="cell by pill truncate">{titleCase(g.uploadedBy)}</div>
-                  <div className="cell status pill">
-                    <span className={`dot ${stat.cls}`} /> {stat.label}
-                  </div>
-                  <div className="cell actions">
-                    <button className="btn outline danger" onClick={()=>onDeleteLane(g.id)}>
-                      <Trash2 size={16}/> Delete
-                    </button>
-                  </div>
-                </div>
-
-                {/* Botão expandir */}
-                <div className="row-expand-toggle">
-                  <button className="expand-btn" onClick={()=>toggleOpen(g.id)} aria-expanded={opened}>
-                    {opened ? <ChevronDown size={18}/> : <ChevronRight size={18}/> }
-                    <span>Expand</span>
-                  </button>
-                </div>
-
-                {/* Expand: receipts */}
-                <div className={`expand ${opened?"show":""}`}>
-                  <div className="receipts" style={{padding:"6px 0"}}>
-                    {receipts.length ? (
-                      receipts.map(({laneId, url, updatedAt})=>{
-                        const src = withCacheBust(toAbsoluteUrl(url), updatedAt);
-                        return (
-                          <div className="thumb" key={`${laneId}|${url}`} title="Click to zoom">
-                            <img
-                              src={src}
-                              alt="receipt"
-                              loading="lazy"
-                              decoding="async"
-                              onClick={()=>setPreview(src)}
-                              onError={(e)=>{ e.currentTarget.style.opacity=".5"; e.currentTarget.alt="broken"; }}
-                            />
-                            <button className="icon danger" title="Remove" onClick={()=>onRemoveReceipt(laneId,url)}>
-                              <Trash2 size={14}/>
-                            </button>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="lln-empty small"><ImageIcon size={14}/> No receipts</div>
-                    )}
+        {/* ===== PAINEL LATERAL ===== */}
+        <aside className="lln-detail">
+          {!selected ? (
+            <>
+              <div className="detail-head">
+                <div className="title">No selection</div>
+              </div>
+              <div className="subtitle">Click a row on the left to see full details here.</div>
+            </>
+          ) : (
+            <>
+              <div className="detail-head">
+                <div>
+                  <div className="title">{selected.client}</div>
+                  <div className="subtitle">
+                    Latest visit: {ymd(selected.latestDate)} • Total: <strong>{money(selected.amountSum)}</strong>
                   </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
 
-        {/* paginação */}
-        <div className="lln-pager">
-          <button className="btn outline" onClick={goPrev} disabled={page<=1}>Prev</button>
-          <span className="pageinfo">Page <strong>{page}</strong> of <strong>{pages}</strong> • {total} items</span>
-          <button className="btn outline" onClick={goNext} disabled={page>=pages}>Next</button>
-        </div>
+              <div className="section">
+                <h4>Observation</h4>
+                <div className="kv">{selected.observation || "—"}</div>
+              </div>
+
+              <div className="section">
+                <h4>Receipts</h4>
+                {selReceipts.length ? (
+                  <div className="receipts">
+                    {selReceipts.map(({laneId, url, updatedAt})=>{
+                      const src = withCacheBust(toAbsoluteUrl(url), updatedAt);
+                      return (
+                        <div className="thumb" key={`${laneId}|${url}`} title="Click to zoom">
+                          <img
+                            src={src}
+                            alt="receipt"
+                            loading="lazy"
+                            decoding="async"
+                            onClick={()=>setPreview(src)}
+                            onError={(e)=>{ e.currentTarget.style.opacity=".5"; e.currentTarget.alt="broken"; }}
+                          />
+                          <button className="icon danger" title="Remove" onClick={()=>onRemoveReceipt(laneId,url)}>
+                            <Trash2 size={14}/>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="lln-empty small"><ImageIcon size={14}/> No receipts</div>
+                )}
+              </div>
+
+              <div className="section">
+                <h4>Items in this group</h4>
+                <div className="items">
+                  <div className="row head">
+                    <div>Date</div>
+                    <div>Type</div>
+                    <div>Payment</div>
+                    <div className="price">Amount</div>
+                  </div>
+                  {selected.items.map((it)=>(
+                    <div key={it._id} className="row">
+                      <div>{ymd(it.visitDate || it.updatedAt)}</div>
+                      <div>{TYPES_MAP.get(it.laneType)||it.laneType||"—"}</div>
+                      <div>{PMAP.get(it.paymentMethod)||it.paymentMethod||"—"} {it.cardLast4 ? `• ${it.cardLast4}` : ""}</div>
+                      <div className="price">{money(it.amount)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </aside>
       </div>
 
       {/* Lightbox */}
