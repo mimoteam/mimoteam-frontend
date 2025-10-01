@@ -15,32 +15,57 @@ const DEBUG_PAYSTATUS = false;
 
 /** ===================== FUSO/SEMANA DO NEGÓCIO ===================== **
  *  - Fuso fixo: America/New_York
- *  - Semana: Quarta (00:00) → Terça (23:59:59)
+ *  - Semana: Quarta (00:00) → Terça (23:59:59.999)
  *  - Todos os usuários compartilham o mesmo range
  */
 const BUSINESS_TZ = 'America/New_York';
 const BUSINESS_WEEK_START_DOW = 3; // Quarta-feira
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Retorna data UTC representando horário local do TZ
+/**
+ * Converte "um instante" para o mesmo relógio visto no time zone alvo,
+ * preservando o offset real (DST etc.).
+ * Retorna um Date cujo timestamp é o instante UTC equivalente ao horário local do TZ.
+ */
 function toZonedDate(input, timeZone = BUSINESS_TZ) {
-  const d = input instanceof Date ? input : new Date(input);
+  const d = input instanceof Date ? new Date(input) : new Date(input);
   if (Number.isNaN(d.getTime())) return new Date(NaN);
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-  });
-  const parts = Object.fromEntries(fmt.formatToParts(d).map(p => [p.type, p.value]));
-  return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second));
+  // invdate trick: diferença entre o mesmo instante visto no TZ alvo vs. no sistema
+  const inv = new Date(d.toLocaleString('en-US', { timeZone }));
+  const diff = d.getTime() - inv.getTime();
+  return new Date(d.getTime() + diff);
 }
+
+/**
+ * Retorna o INSTANTE UTC correspondente a 00:00 do dia de negócio do 'date' no TZ dado.
+ * Evita “voltar um dia” ao atravessar DST.
+ */
 function startOfDayInTZ(date, tz = BUSINESS_TZ) {
-  const d = toZonedDate(date, tz);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+  const d = date instanceof Date ? new Date(date) : new Date(date);
+  if (Number.isNaN(d.getTime())) return new Date(NaN);
+
+  // 1) Pega Y-M-D no TZ de negócio
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+      .formatToParts(d).map(p => [p.type, p.value])
+  );
+
+  // 2) Constrói um "parede" (local do sistema) 00:00 desse Y-M-D
+  const asLocal = new Date(`${parts.year}-${parts.month}-${parts.day}T00:00:00`);
+
+  // 3) Converte esse "parede" para o INSTANTE visto no TZ alvo
+  const seenInTZ = new Date(asLocal.toLocaleString('en-US', { timeZone: tz }));
+  const diff = asLocal.getTime() - seenInTZ.getTime();
+
+  // Resultado: 00:00 local do negócio, expresso em UTC
+  return new Date(asLocal.getTime() + diff);
 }
+
 function endOfDayInTZ(date, tz = BUSINESS_TZ) {
   const s = startOfDayInTZ(date, tz);
-  return new Date(s.getTime() + DAY_MS - 1);
+  return new Date(s.getTime() + DAY_MS - 1); // 23:59:59.999 local (em UTC)
 }
+
 function addDaysUTC(date, days) {
   const d = new Date(date);
   d.setUTCDate(d.getUTCDate() + days);
@@ -49,27 +74,34 @@ function addDaysUTC(date, days) {
 
 // Início e fim da semana de negócio (sempre Quarta → Terça)
 function startOfBusinessWeekInTZ(date, tz = BUSINESS_TZ, startDow = BUSINESS_WEEK_START_DOW) {
-  const sod = startOfDayInTZ(date, tz);
-  const dow = sod.getUTCDay();
-  const delta = (dow - startDow + 7) % 7;
+  const sod = startOfDayInTZ(date, tz);       // 00:00 local do negócio (em UTC)
+  const dow = sod.getUTCDay();                // dia da semana em UTC do mesmo instante (equivale ao local do negócio)
+  const delta = (dow - startDow + 7) % 7;     // quanto voltar até Quarta
   return addDaysUTC(sod, -delta);
 }
+
 function endOfBusinessWeekInTZ(date, tz = BUSINESS_TZ) {
   const s = startOfBusinessWeekInTZ(date, tz);
-  return endOfDayInTZ(addDaysUTC(s, 6), tz);
+  return endOfDayInTZ(addDaysUTC(s, 6), tz); // Terça 23:59:59.999
 }
 
-// ISO (YYYY-MM-DD) no fuso fixo
+// ISO (YYYY-MM-DD) no fuso fixo (data de negócio)
 function isoDateInBusinessTZ(input) {
   const s = startOfDayInTZ(input, BUSINESS_TZ);
   return `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, '0')}-${String(s.getUTCDate()).padStart(2, '0')}`;
 }
+
+// Formata a data de negócio de forma estável (sem deslocar de dia)
 function formatDateTZ(input, opts) {
-     const d = input instanceof Date ? input : new Date(input);
-     return new Intl.DateTimeFormat('en-US', {
-       timeZone: 'UTC', year: 'numeric', month: 'short', day: '2-digit', ...(opts || {})
-     }).format(d);
-   }
+  const s = startOfDayInTZ(input, BUSINESS_TZ);
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    ...(opts || {}),
+  }).format(s);
+}
 
 // ===================== CORREÇÃO #1: weekKey ancorado no “ano de quarta” =====================
 // Primeira semana do ano de negócio: 1ª quarta-feira (>= 1º de janeiro) às 00:00 no TZ
@@ -120,6 +152,7 @@ const arraysEqualAsSets = (a = [], b = []) => {
 const fmtApiDateTZ = (d) => (d ? isoDateInBusinessTZ(d) : '');
 const getErrorMessage = (e, fb = 'Unexpected error') =>
   e?.response?.data?.message || e?.response?.data?.error || e?.message || fb;
+
 
 /** ===================== Tipos (para reidratar) ===================== */
 const serviceTypes = [
@@ -483,8 +516,9 @@ const Payments = () => {
       const pickedWeek = weekOptions.find(w => w.key === assignWeekKey);
       const weekKeySel = assignWeekKey;
       const weekStartISO = pickedWeek ? startOfBusinessWeekInTZ(pickedWeek.start, BUSINESS_TZ).toISOString() : undefined;
-      const weekEndISO   = pickedWeek ? endOfBusinessWeekInTZ(pickedWeek.end, BUSINESS_TZ).toISOString()   : undefined;
+      const weekEndISO   = pickedWeek ? endOfBusinessWeekInTZ(pickedWeek.start,  BUSINESS_TZ).toISOString()  : undefined;
 
+     
       const payload = clean({
         partnerId,
         partnerName,
