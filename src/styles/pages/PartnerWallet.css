@@ -1,3 +1,4 @@
+/* PartnerWallet.css */
 @import "src/styles/partner/PartnerTokens.css";
 
 /* Escopo seguro */
@@ -9,7 +10,8 @@
   padding: 12px;
   display: grid;
   gap: 14px;
-  overflow-x: clip;
+  /* Não cortar overflow horizontal para não esconder colunas no mobile */
+  overflow-x: visible;
 }
 
 /* ===== Cards/Métricas ===== */
@@ -164,9 +166,15 @@
   background: #f0fbff; border-bottom: 1px solid #e2e8f0;
 }
 .pml-wrap .wallet-page .table.table--breakdown .th{ font-size:12px; font-weight:800; color:#475569; white-space:nowrap; }
-.pml-wrap .wallet-page .table.table--breakdown .tbody .tr{ padding:8px 0; border-bottom:1px solid #e2e8f0; background:#fff; }
+.pml-wrap .wallet-page .table.table--breakdown .tbody .tr{
+  padding:8px 0; border-bottom:1px solid #e2e8f0; background:#fff;
+  cursor: pointer; /* linha clicável */
+  transition: background .15s ease;
+}
+.pml-wrap .wallet-page .table.table--breakdown .tbody .tr:hover{ background:#f8fdff; }
 .pml-wrap .wallet-page .table.table--breakdown .tbody .tr:nth-child(odd){ background:#f8fafc; }
 .pml-wrap .wallet-page .table.table--breakdown .tbody .tr:last-child{ border-bottom:0; }
+
 .pml-wrap .wallet-page .table.table--breakdown .td{
   font-size:13px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#0f172a;
 }
@@ -190,23 +198,33 @@
 .pml-wrap .wallet-page .table.table--breakdown .tbody .td:nth-child(5){ grid-area: guests; text-align:center; }
 .pml-wrap .wallet-page .table.table--breakdown .tbody .td:nth-child(6){ grid-area: amount; text-align:right; }
 
-/* ===== EXPAND DA LINHA (landscape apenas) ===== */
+/* ===== EXPAND DA LINHA (click na linha) ===== */
 .pml-wrap .wallet-page .srv-row .amount{
   display:flex; align-items:center; justify-content:flex-end; gap:8px;
 }
-.pml-wrap .wallet-page .srv-toggle{
-  width:26px; height:26px; display:inline-flex; align-items:center; justify-content:center;
-  border:1px solid rgba(46,148,185,.28); border-radius:8px; background:#fff; cursor:pointer;
-}
-.pml-wrap .wallet-page .srv-row.is-open .srv-toggle .chev{ transform: rotate(180deg); }
+.pml-wrap .wallet-page .srv-toggle{ display:none !important; } /* botão removido */
 
+/* Fechada: sem espaço no layout (sem padding/margin/borda) */
 .pml-wrap .wallet-page .srv-extra{
   grid-column: 1 / -1;
-  display:none;
-  margin-top:6px; padding:10px;
-  border:1px dashed #cbd5e1; border-radius:10px; background:#f8fafc; color:#0f172a;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0;
+  margin-top: 0;
+  border: 0;
+  transition: max-height .22s ease, opacity .18s ease, padding .22s ease, margin-top .22s ease, border-width .22s ease;
 }
-.pml-wrap .wallet-page .srv-row.is-open .srv-extra{ display:block; }
+/* Aberta: entra no fluxo com espaçamento e borda */
+.pml-wrap .wallet-page .srv-row.is-open .srv-extra{
+  max-height: 240px;
+  opacity: 1;
+  padding: 10px;
+  margin-top: 6px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background:#f8fafc; color:#0f172a;
+}
 
 .pml-wrap .wallet-page .srv-extra .chip{
   display:inline-block; font-size:10px; font-weight:900; padding:2px 6px; border-radius:999px;
@@ -214,13 +232,23 @@
 }
 .pml-wrap .wallet-page .srv-extra .muted{ color:#94a3b8; }
 
-/* ===== Portrait (mantém seu comportamento atual — SEM expansão) ===== */
+/* ===== Mobile (vertical): mostrar colunas + tipografia fluida ===== */
 @media (max-width: 640px), (orientation: portrait) {
   .pml-wrap .wallet-page .wpay-breakdown{ max-height: 60vh; overflow-x: auto; }
   .pml-wrap .wallet-page .table.table--breakdown{ min-width: 900px; } /* mantém scroll x */
-  /* esconder qualquer UI de expand em portrait */
-  .pml-wrap .wallet-page .srv-toggle{ display:none !important; }
-  .pml-wrap .wallet-page .srv-extra{ display:none !important; }
+  /* remover sticky para Safari/Chrome iOS não colapsarem colunas */
+  .pml-wrap .wallet-page .table.table--breakdown .thead{ position: static; }
+
+  /* tipografia fluida */
+  .pml-wrap .wallet-page .table.table--breakdown .th{
+    font-size: clamp(11px, 3.2vw, 13px);
+  }
+  .pml-wrap .wallet-page .table.table--breakdown .td{
+    font-size: clamp(11px, 3.0vw, 13px);
+  }
+  .pml-wrap .wallet-page .wpay-head{
+    font-size: clamp(11px, 3.0vw, 12px);
+  }
 }
 
 /* Paginação */

@@ -1,7 +1,8 @@
+// PartnerWallet.jsx
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   CalendarDays, Check, X, DollarSign, BarChart3, TrendingUp, Clock,
-  ChevronLeft, ChevronRight, ChevronDown, Calendar
+  ChevronLeft, ChevronRight, Calendar
 } from 'lucide-react';
 import { api } from '../api/http';
 import '../styles/pages/PartnerWallet.css';
@@ -134,7 +135,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   const isOpen = (id) => !!openMap[id];
   const toggleOpen = (id) => setOpenMap(m => ({ ...m, [id]: !m[id] }));
 
-  /* abre/fecha: service row (apenas landscape) */
+  /* abre/fecha: service row (linha inteira) */
   const [rowOpen, setRowOpen] = useState({});
   const isRowOpen = (id) => !!rowOpen[id];
   const toggleRow = (id) => setRowOpen(m => ({ ...m, [id]: !m[id] }));
@@ -426,36 +427,39 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
     const open = isRowOpen(s.id);
     const client = `${s.firstName || ''} ${s.lastName || ''}`.trim() || '—';
     const park   = s.park || s.location || '—';
-    const guests = (s.guests ?? '—');
+       const guests = (s.guests ?? '—');
     const obs = s.observation ?? s.observations ?? s.note ?? s.notes ?? s.comment ?? s.comments ?? s.title ?? '';
 
+    const onRowClick = () => toggleRow(s.id);
+    const onRowKey = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRow(s.id); }
+    };
+
     return (
-      <div className={`tr srv-row${open ? ' is-open' : ''}`} data-id={s.id}>
+      <div
+        className={`tr srv-row${open ? ' is-open' : ''}`}
+        data-id={s.id}
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={onRowClick}
+        onKeyDown={onRowKey}
+      >
         <div className="td" data-label="Date">
           {s.serviceDate ? new Date(s.serviceDate).toLocaleDateString() : '—'}
         </div>
         <div className="td" data-label="Client">{client}</div>
         <div className="td" data-label="Service">
           <div className="main">{fmtServiceType(s?.serviceType || s?.serviceTypeId)}</div>
-          {/* OBS NÃO aparece aqui; só no expand */}
         </div>
         <div className="td" data-label="Park">{park}</div>
         <div className="td center" data-label="Guests">{guests}</div>
         <div className="td right amount" data-label="Amount">
-          <button
-            type="button"
-            className="srv-toggle"
-            aria-expanded={open}
-            onClick={() => toggleRow(s.id)}
-            title={open ? 'Hide details' : 'Show details'}
-          >
-            <ChevronDown size={16} className="chev"/>
-          </button>
           <span className="value">{fmtUSD(s.finalValue)}</span>
         </div>
 
-        {/* Área expandida — apenas landscape via CSS */}
-        <div className="srv-extra">
+        {/* Área expandida — só ocupa espaço quando aberta */}
+        <div className="srv-extra" id={`obs-${s.id}`}>
           {obs ? (
             <div className="obs-line">
               <span className="chip">OBS</span>
@@ -547,7 +551,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
             onClick={() => setStatusOpen(o => !o)}
           >
             <span>{statusLabel}</span>
-            <ChevronDown size={14} className="chev" />
+            <svg width="14" height="14" viewBox="0 0 24 24" className="chev"><path d="M6 9l6 6 6-6"/></svg>
           </button>
 
           {statusOpen && (
@@ -636,7 +640,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
                   <div className="breakdown-box" data-open={isOpen(p.id)}>
                     <button className="bd-toggle" onClick={() => toggleOpen(p.id)} aria-expanded={isOpen(p.id)}>
                       <span>Breakdown</span>
-                      <ChevronDown size={16} className="chev" />
+                      <svg width="16" height="16" viewBox="0 0 24 24" className="chev"><path d="M6 9l6 6 6-6"/></svg>
                     </button>
 
                     {isOpen(p.id) && (
@@ -740,7 +744,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
                   <div className="breakdown-box" data-open={isOpen(p.id)}>
                     <button className="bd-toggle" onClick={() => toggleOpen(p.id)} aria-expanded={isOpen(p.id)}>
                       <span>Breakdown</span>
-                      <ChevronDown size={16} className="chev" />
+                      <svg width="16" height="16" viewBox="0 0 24 24" className="chev"><path d="M6 9l6 6 6-6"/></svg>
                     </button>
 
                     {isOpen(p.id) && (
