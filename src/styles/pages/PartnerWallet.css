@@ -230,8 +230,24 @@
   display:inline-block; font-size:10px; font-weight:900; padding:2px 6px; border-radius:999px;
   border:1px solid #fed7aa; background:#fff7ed; color:#9a3412; margin-right:8px;
 }
-.pml-wrap .wallet-page .srv-extra .muted{ color:#94a3b8; }
 
+
+.pml-wrap .wallet-page .srv-extra {
+  font-size: clamp(12px, 3.2vw, 14px);
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%; /* evita Safari aumentar sozinho */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Normaliza headings ou textos formatados */
+.pml-wrap .wallet-page .srv-extra h1,
+.pml-wrap .wallet-page .srv-extra h2,
+.pml-wrap .wallet-page .srv-extra h3 {
+  font-size: 1em;
+  font-weight: 700;
+  margin: 0;
+}
 /* ===== Mobile (vertical): mostrar colunas + tipografia fluida ===== */
 @media (max-width: 640px), (orientation: portrait) {
   .pml-wrap .wallet-page .wpay-breakdown{ max-height: 60vh; overflow-x: auto; }
