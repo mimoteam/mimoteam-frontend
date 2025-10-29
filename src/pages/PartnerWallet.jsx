@@ -1,4 +1,3 @@
-// src/pages/PartnerWallet.jsx
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   CalendarDays, Check, X, DollarSign, BarChart3, TrendingUp, Clock,
@@ -22,14 +21,14 @@ function sameYYYYMM(iso, ym){
   if (!iso || !ym) return false;
   const d = new Date(iso);
   const [y,m] = ym.split('-').map(Number);
-  return d.getUTCFullYear() === y && (d.getUTCMonth() + 1) === m; // UTC evita “quebra” no fim de mês
+  return d.getUTCFullYear() === y && (d.getUTCMonth() + 1) === m;
 }
 
 const fmtUSD = (n) => `$${Number(n || 0).toFixed(2)}`;
 const NORM = (s) => String(s || '').toUpperCase();
 const SID = (v) => (v == null ? null : String(v));
 
-/* Datas normalizadas (pagamentos podem vir em formatos diferentes) */
+/* Datas normalizadas */
 const getPWeekStart = (p) => p?.week?.start || p?.weekStart || p?.periodFrom || p?.createdAt || null;
 const getPWeekEnd   = (p) => p?.week?.end   || p?.weekEnd   || p?.periodTo   || p?.createdAt || null;
 
@@ -52,24 +51,26 @@ const fmtServiceType = (v) => {
 
 function asId(v) {
   if (!v) return null;
- if (typeof v === 'string') return SID(v);
+  if (typeof v === 'string') return SID(v);
   if (typeof v === 'object') return SID(v._id || v.id || v.serviceId || null);
   return null;
-
 }
+
 function extractServiceIdsFromPayment(p) {
-if (Array.isArray(p?.serviceIds)) return p.serviceIds.map(asId).filter(Boolean);
+  if (Array.isArray(p?.serviceIds)) return p.serviceIds.map(asId).filter(Boolean);
   if (Array.isArray(p?.services))   return p.services.map(asId).filter(Boolean);
- if (Array.isArray(p?.services))   return p.services.map(asId).filter(Boolean);
   if (Array.isArray(p?.items))      return p.items.map((it) => asId(it?.service || it?.serviceId || it)).filter(Boolean);
-   return [];
- }
+  return [];
+}
+
 function embeddedServiceLines(p) {
   if (Array.isArray(p?.services) && p.services.length && typeof p.services[0] === 'object') {
-  return p.services.map((s) => ({ ...s, id: SID(s._id || s.id) })); }
+    return p.services.map((s) => ({ ...s, id: SID(s._id || s.id) }));
+  }
   if (Array.isArray(p?.items) && p.items.length && typeof p.items[0] === 'object') {
     return p.items.map((s) => {
-const sid = SID(s._id || s.id || s.serviceId || (s.service && (s.service._id || s.service.id)));      return { ...s, id: sid };
+      const sid = SID(s._id || s.id || s.serviceId || (s.service && (s.service._id || s.service.id)));
+      return { ...s, id: sid };
     });
   }
   return [];
@@ -86,7 +87,6 @@ function monthToRange(ym) {
 const viewStatus = (raw) => {
   const s = NORM(raw);
   if (s === 'APPROVED' || s === 'PAID' || s === 'DECLINED') return s;
-  // SHARED e ON_HOLD caem como "PENDING" para a UI do parceiro
   return 'PENDING';
 };
 
@@ -129,9 +129,15 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   const [rejecting, setRejecting]       = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  /* abre/fecha: payment (Breakdown) */
   const [openMap, setOpenMap] = useState({});
   const isOpen = (id) => !!openMap[id];
   const toggleOpen = (id) => setOpenMap(m => ({ ...m, [id]: !m[id] }));
+
+  /* abre/fecha: service row (apenas landscape) */
+  const [rowOpen, setRowOpen] = useState({});
+  const isRowOpen = (id) => !!rowOpen[id];
+  const toggleRow = (id) => setRowOpen(m => ({ ...m, [id]: !m[id] }));
 
   /* ===== dropdown de status ===== */
   const STATUS_OPTIONS = [
@@ -156,7 +162,6 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   /* =================== Fetch helpers =================== */
   const DEV = typeof window !== 'undefined' && window?.location?.hostname === 'localhost';
 
-  // **Robust**: aceita res, res.data, res.items e res.data.items
   const pickItems = (res) => {
     if (Array.isArray(res?.items)) return res.items;
     if (Array.isArray(res?.data?.items)) return res.data.items;
@@ -259,7 +264,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
         fetched.forEach(svc => {
           const key = SID(svc._id || svc.id);
           next.set(key, { ...svc, id: key });
-       });
+        });
         if (alive) setServicesById(next);
       } catch (e) {
         console.warn('Failed to load services by ids', e);
@@ -270,21 +275,18 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payments]);
 
-    const linesForPayment = (p) => {
+  const linesForPayment = (p) => {
     const ids = extractServiceIdsFromPayment(p).map(SID).filter(Boolean);
     const embedded = embeddedServiceLines(p);
     const embById = new Map(embedded.map(l => [SID(l.id), l]));
     if (ids.length) {
-      // Prioriza a lista oficial de ids do pagamento (ordem e cobertura)
       const out = ids.map(id => embById.get(id) || servicesById.get(id)).filter(Boolean);
-      // Caso existam embutidos extras não listados em serviceIds, acrescenta sem duplicar
       embedded.forEach(l => {
         const k = SID(l.id);
         if (!ids.includes(k) && !out.find(x => SID(x.id) === k)) out.push(l);
       });
       return out;
     }
-    // fallback: sem serviceIds, usa somente o embutido
     return embedded;
   };
 
@@ -299,10 +301,9 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
 
   /* =============== Derivados =============== */
 
-  // 1) Lista por status — AGORA visível somente “depois do share”
   const statusPayments = useMemo(() => {
     let arr = payments.slice();
-    arr = arr.filter(isVisibleToPartner);               // <<<<<<<<<< importantíssimo
+    arr = arr.filter(isVisibleToPartner);
     arr = arr.filter(p => viewStatus(p.status) === statusFilter);
     arr = arr.filter(p => {
       const ref = getPWeekStart(p) || p.createdAt;
@@ -315,7 +316,6 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   const psTotalPages = Math.max(1, statusPayments.length || 1);
   const psCurrent = statusPayments[psPage - 1] || null;
 
-  // 2) All payments (já tinha o filtro de visibilidade)
   const allPaymentsFiltered = useMemo(() => {
     const arr = payments
       .filter(isVisibleToPartner)
@@ -330,7 +330,6 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
   const apTotalPages = Math.max(1, allPaymentsFiltered.length || 1);
   const apCurrent = allPaymentsFiltered[apPage - 1] || null;
 
-  // 3) Métricas — incluem servicesById para recalcular quando as linhas chegarem
   const [weekMetrics, monthMetrics, pendingCount, yearTotal] = useMemo(() => {
     const { start, end } = getWeekWedTue(weekRef);
 
@@ -405,7 +404,6 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
       setPayments(prev => prev.map(x => (x.id === p.id ? { ...x, ...upd } : x)));
     } catch (e) {
       setPayments(prev => prev.map(x => (x.id === p.id ? { ...x, status: 'DECLINED', notesLog: pushAuditLocal(p, `Partner declined — ${rejectReason.trim()}`) } : x)));
-      console.warn('reject failed, applied optimistic update', e);
     } finally {
       setRejecting(null); setRejectReason('');
     }
@@ -423,6 +421,54 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
     return '—';
   };
 
+  /* ======= Subcomponente de linha com expansão (obs) ======= */
+  const ServiceRow = ({ s }) => {
+    const open = isRowOpen(s.id);
+    const client = `${s.firstName || ''} ${s.lastName || ''}`.trim() || '—';
+    const park   = s.park || s.location || '—';
+    const guests = (s.guests ?? '—');
+    const obs = s.observation ?? s.observations ?? s.note ?? s.notes ?? s.comment ?? s.comments ?? s.title ?? '';
+
+    return (
+      <div className={`tr srv-row${open ? ' is-open' : ''}`} data-id={s.id}>
+        <div className="td" data-label="Date">
+          {s.serviceDate ? new Date(s.serviceDate).toLocaleDateString() : '—'}
+        </div>
+        <div className="td" data-label="Client">{client}</div>
+        <div className="td" data-label="Service">
+          <div className="main">{fmtServiceType(s?.serviceType || s?.serviceTypeId)}</div>
+          {/* OBS NÃO aparece aqui; só no expand */}
+        </div>
+        <div className="td" data-label="Park">{park}</div>
+        <div className="td center" data-label="Guests">{guests}</div>
+        <div className="td right amount" data-label="Amount">
+          <button
+            type="button"
+            className="srv-toggle"
+            aria-expanded={open}
+            onClick={() => toggleRow(s.id)}
+            title={open ? 'Hide details' : 'Show details'}
+          >
+            <ChevronDown size={16} className="chev"/>
+          </button>
+          <span className="value">{fmtUSD(s.finalValue)}</span>
+        </div>
+
+        {/* Área expandida — apenas landscape via CSS */}
+        <div className="srv-extra">
+          {obs ? (
+            <div className="obs-line">
+              <span className="chip">OBS</span>
+              <span className="text">{obs}</span>
+            </div>
+          ) : (
+            <div className="muted">No additional notes.</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   /* ======= Breakdown table ======= */
   const renderBreakdownTable = (lines) => {
     if (!lines?.length) return null;
@@ -438,28 +484,7 @@ export default function PartnerWallet({ currentUser, coloredCards = true, filter
           <div className="th right">Amount</div>
         </div>
         <div className="tbody">
-          {lines.map(s => {
-            const client = `${s.firstName || ''} ${s.lastName || ''}`.trim() || '—';
-            const park   = s.park || s.location || '—';
-            const guests = (s.guests ?? '—');
-            return (
-              <div key={s.id} className="tr">
-                <div className="td" data-label="Date">
-                  {s.serviceDate ? new Date(s.serviceDate).toLocaleDateString() : '—'}
-                </div>
-                <div className="td" data-label="Client">{client}</div>
-                <div className="td" data-label="Service">
-                  <div className="main">{fmtServiceType(s?.serviceType || s?.serviceTypeId)}</div>
-                  <div className="sub">{s?.notes || s?.title || ''}</div>
-                </div>
-                <div className="td" data-label="Park">{park}</div>
-                <div className="td center" data-label="Guests">{guests}</div>
-                <div className="td right amount" data-label="Amount">
-                  <span className="value">{fmtUSD(s.finalValue)}</span>
-                </div>
-              </div>
-            );
-          })}
+          {lines.map((s) => <ServiceRow key={s.id} s={s} />)}
         </div>
       </div>
     );
